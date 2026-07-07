@@ -1,21 +1,45 @@
 from aiogram import Router, F
 from aiogram.types import Message
 
+from app.database import get_products_by_client_id, get_user_by_telegram_id
+from app.keyboards import main_menu_kb
+from app.services.formatting_service import format_product_list
+
 router = Router()
 
 
 @router.message(F.text == "📦 Mening mahsulotlarim")
 async def my_products(message: Message):
-    await message.answer("Sizning mahsulotlaringiz ro'yxati:")
+    user = await get_user_by_telegram_id(message.from_user.id)
+    if user is None:
+        await message.answer("Avval /start orqali ro'yxatdan o'ting.")
+        return
+
+    products = await get_products_by_client_id(user["id"])
+    text = format_product_list(products)
+    await message.answer(text, reply_markup=main_menu_kb(user["role"]))
 
 
 @router.message(F.text == "❓ Yordam")
 async def help_handler(message: Message):
-    await message.answer(
-        "🤖 Ombor boti yordam bo'limi\n\n"
-        "Admin buyruqlari:\n"
-        "/admin - Admin panel\n"
-        "/add_client - Mijoz qo'shish\n\n"
-        "Mijoz buyruqlari:\n"
-        "📦 Mening mahsulotlarim - Mahsulotlarni ko'rish"
-    )
+    user = await get_user_by_telegram_id(message.from_user.id)
+    role = user["role"] if user else "client"
+
+    if role == "admin":
+        text = (
+            "🤖 <b>Ombor boti — Admin yordam</b>\n\n"
+            "/admin - Admin panel\n"
+            "➕ Mahsulot qo'shish - Mijozga mahsulot qo'shish\n"
+            "📋 Mijozlarni ko'rish - Mijozlar ro'yxati\n"
+            "📊 Hisobot - Hisobot\n\n"
+            "Mijozlarga /start bosib ro'yxatdan o'tishni tavsiya eting."
+        )
+    else:
+        text = (
+            "🤖 <b>Ombor boti — Yordam</b>\n\n"
+            "/start - Botga kirish va ro'yxatdan o'tish\n"
+            "📦 Mening mahsulotlarim - O'z mahsulotlaringizni ko'rish\n\n"
+            "Savol va muammolar bo'lsa, ombor admini bilan bog'laning."
+        )
+
+    await message.answer(text, reply_markup=main_menu_kb(role))

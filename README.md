@@ -82,6 +82,27 @@ Telegram'dagi `request_contact=True` tugmasi orqali. Foydalanuvchi faqat o'z raq
 10. "Ha ✅" bossa `products` jadvaliga yoziladi
 11. "Yo'q ❌" yoki "❌ Bekor qilish" bossa jarayon bekor qilinadi
 
+## Client mahsulotlarni ko'rish
+
+1. Foydalanuvchi "📦 Mening mahsulotlarim" tugmasini bosadi
+2. Bot Telegram ID orqali foydalanuvchini topadi
+3. Agar foydalanuvchi ro'yxatdan o'tmagan bo'lsa: "Avval /start orqali ro'yxatdan o'ting."
+4. `get_products_by_client_id()` orqali mahsulotlar olinadi
+5. Agar mahsulot yo'q bo'lsa: "Sizda hozircha mahsulot mavjud emas."
+6. Mahsulotlar chiroyli formatda ko'rsatiladi (10 tadan ko'p bo'lsa, qolgani haqida xabar chiqadi)
+
+### Admin /start ro'yxatdan o'tish
+
+Agar foydalanuvchi `ADMIN_IDS` ro'yxatida bo'lsa, `/start` paytida uning roli `admin` qilib belgilanadi.
+
+- `role = "admin"` → admin panel menyusi ko'rsatiladi
+- `role = "client"` → client menyusi ko'rsatiladi
+
+**Eski adminlar:** agar admin avval `client` role bilan ro'yxatdan o'tgan bo'lsa, DB'ni qo'lda tahrirlash kerak:
+```sql
+UPDATE users SET role='admin' WHERE telegram_id=123456789;
+```
+
 ### Admin ID qanday beriladi
 
 `.env` faylida:

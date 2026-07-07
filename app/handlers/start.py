@@ -51,17 +51,22 @@ async def phone_contact_received(message: Message, state: FSMContext):
     full_name = message.from_user.full_name
     username = message.from_user.username
 
+    from app.config import config
+
+    role = "admin" if message.from_user.id in config.admin_ids else "client"
+
     await create_user(
         telegram_id=message.from_user.id,
         phone=normalized,
         full_name=full_name,
         username=username,
+        role=role,
     )
 
     await state.clear()
     await message.answer(
         "Ro'yxatdan o'tish yakunlandi ✅",
-        reply_markup=main_menu_kb("client"),
+        reply_markup=main_menu_kb(role),
     )
 
 
