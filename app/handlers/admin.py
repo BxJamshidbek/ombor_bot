@@ -467,21 +467,33 @@ async def exit_product_confirm(message: Message, state: FSMContext):
 
     if text == "Ha ✅":
         data = await state.get_data()
-        ok = await exit_product(
+        exit_data = await exit_product(
             product_id=data["selected_product_id"],
             admin_id=message.from_user.id,
             note=data.get("note"),
         )
 
         await state.clear()
-        if ok:
+        if exit_data is None:
+            await message.answer(
+                "Chiqim qilishda xatolik bo'ldi yoki mahsulot allaqachon chiqim qilingan.",
+                reply_markup=admin_panel_kb(),
+            )
+        elif not sheets_service.is_configured():
+            await message.answer(
+                "Mahsulot chiqim qilindi ✅. "
+                "Google Sheets sozlanmagan, shuning uchun Sheets'ga yozilmadi.",
+                reply_markup=admin_panel_kb(),
+            )
+        elif await sheets_service.append_exit_row(exit_data):
             await message.answer(
                 "Mahsulot chiqim qilindi ✅",
                 reply_markup=admin_panel_kb(),
             )
         else:
             await message.answer(
-                "Chiqim qilishda xatolik bo'ldi yoki mahsulot allaqachon chiqim qilingan.",
+                "Mahsulot SQLite bazada chiqim qilindi ✅, "
+                "lekin Google Sheets'ga yozishda xatolik bo'ldi ⚠️",
                 reply_markup=admin_panel_kb(),
             )
 

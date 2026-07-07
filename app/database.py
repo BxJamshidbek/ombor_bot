@@ -250,7 +250,7 @@ async def get_product_by_id(product_id: int) -> dict | None:
         await conn.close()
 
 
-async def exit_product(product_id: int, admin_id: int, note: str | None = None) -> bool:
+async def exit_product(product_id: int, admin_id: int, note: str | None = None) -> dict | None:
     conn = await get_connection()
     now = datetime.now(timezone.utc).isoformat()
     try:
@@ -261,7 +261,7 @@ async def exit_product(product_id: int, admin_id: int, note: str | None = None) 
         )
         product = await cursor.fetchone()
         if product is None or product["status"] != "active":
-            return False
+            return None
 
         await conn.execute(
             """
@@ -284,9 +284,23 @@ async def exit_product(product_id: int, admin_id: int, note: str | None = None) 
             (now, product_id),
         )
         await conn.commit()
-        return True
+
+        return {
+            "product_id": product["id"],
+            "telegram_id": product["telegram_id"],
+            "phone": product["phone"],
+            "client_name": product["client_name"],
+            "product_name": product["product_name"],
+            "kg_amount": product["kg_amount"],
+            "price_per_kg": product["price_per_kg"],
+            "storage_days": product["storage_days"],
+            "total_price": product["total_price"],
+            "exited_at": now,
+            "created_by_admin_id": admin_id,
+            "note": note,
+        }
     except Exception:
         await conn.rollback()
-        return False
+        return None
     finally:
         await conn.close()

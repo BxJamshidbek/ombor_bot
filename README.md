@@ -155,10 +155,39 @@ GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
 - Bot start bo'lganda `SheetsService.initialize()` chaqiriladi
 - Agar credentials topilmasa, Sheets funksiyasi o'chiriladi (bot ishlashda davom etadi)
 - Admin mahsulot qo'shganda avval SQLite, keyin Google Sheets'ga yoziladi
+- Admin mahsulot chiqarganda avval SQLite (atomik transaction), keyin Google Sheets'ga yoziladi
 - Agar Sheets'ga yozishda xatolik bo'lsa, SQLite'dagi ma'lumot saqlanadi va adminga xabar chiqadi
-- Sheet avtomatik tarzda "Kirim" varaqini yaratadi va headerlarni o'zi yozadi
+- Sheet avtomatik tarzda "Kirim" va "Chiqim" varaqlarini yaratadi va headerlarni o'zi yozadi
 
 **Muhim:** Service account JSON faylini **hech qachon** gitga push qilmang. U `.gitignore` orqali chiqarib tashlangan.
+
+### Kirim sheet ustunlari
+
+1. Telegram ID
+2. Telefon raqam
+3. Ism
+4. Mahsulot nomi
+5. Kg miqdori
+6. 1 kg narxi
+7. Saqlash muddati (kun)
+8. Umumiy summa
+9. Status
+10. Yaratilgan sana
+
+### Chiqim sheet ustunlari
+
+1. Product ID
+2. Telegram ID
+3. Telefon raqam
+4. Ism
+5. Mahsulot nomi
+6. Kg miqdori
+7. 1 kg narxi
+8. Saqlash muddati (kun)
+9. Umumiy summa
+10. Chiqim sanasi
+11. Admin Telegram ID
+12. Izoh
 
 ## Admin: Mijozlar ro'yxati
 
