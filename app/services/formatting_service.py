@@ -52,18 +52,19 @@ def format_active_products_for_exit(products: list[dict]) -> str:
         return "Bu mijozda faol mahsulotlar mavjud emas."
 
     lines = ["📤 <b>Chiqarish uchun mahsulotlar:</b>\n"]
-    for i, p in enumerate(products, 1):
+    for p in products:
         lines.append(
-            f"{i}. <b>{p['product_name']}</b>\n"
-            f"   Kg: {p['kg_amount']}\n"
-            f"   Narxi: {p['price_per_kg']:,.0f} so'm/kg\n"
-            f"   Saqlash: {p['storage_days']} kun\n"
-            f"   Summa: {p['total_price']:,.0f} so'm\n"
-            f"   Sana: {p['created_at'][:10]}"
+            f"<b>ID:</b> {p['id']}\n"
+            f"<b>Mahsulot:</b> {p['product_name']}\n"
+            f"<b>Kg:</b> {p['kg_amount']}\n"
+            f"<b>1 kg narxi:</b> {p['price_per_kg']:,.0f} so'm\n"
+            f"<b>Saqlash:</b> {p['storage_days']} kun\n"
+            f"<b>Summa:</b> {p['total_price']:,.0f} so'm\n"
+            f"<b>Sana:</b> {p['created_at'][:10]}"
         )
 
-    lines.append("\nChiqariladigan mahsulot raqamini kiriting:")
-    return "\n\n".join(lines)
+    lines.append("\nChiqariladigan mahsulot ID sini kiriting:")
+    return "\n\n---\n\n".join(lines)
 
 
 def format_admin_stats(stats: dict) -> str:

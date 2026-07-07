@@ -172,15 +172,22 @@ GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
 1. Admin "📤 Mahsulot chiqarish" tugmasini bosadi
 2. Bot mijozning telefon raqamini so'raydi
 3. Admin raqamni kiritadi, bot normalize qiladi va `users` jadvalidan qidiradi
-4. Agar mijoz topilsa, bot uning faol mahsulotlarini ro'yxatini ko'rsatadi
-5. Admin chiqariladigan mahsulot raqamini kiritadi
-6. Bot tanlangan mahsulot ma'lumotlarini ko'rsatadi va tasdiqlashni so'raydi
-7. "Ha ✅" bossa:
+4. Agar mijoz topilsa, bot uning faol mahsulotlarini real `ID` bilan ko'rsatadi
+5. Admin chiqariladigan mahsulot ID sini kiritadi
+6. Bot ID orqali mahsulotni tekshiradi (status `active`, telefon mosligi)
+7. Admin izoh kiritadi yoki `-` yuborib izohsiz davom etadi
+8. Yakuniy tasdiq so'raladi
+9. "Ha ✅" bossa:
+   - Bitta transaction ichida `exits` jadvaliga chiqim yozuvi qo'shiladi
    - `products` jadvalidagi mahsulot statusi `exited` ga o'zgaradi
-   - `exits` jadvaliga chiqim yozuvi qo'shiladi
-8. "Yo'q ❌" yoki "❌ Bekor qilish" bossa jarayon bekor qilinadi
+   - Agar xatolik bo'lsa, to'liq rollback qilinadi
+10. "Yo'q ❌" yoki "❌ Bekor qilish" bossa jarayon bekor qilinadi
 
-**Muhim:** Mahsulot `products` jadvalidan o'chirilmaydi, faqat statusi `exited` ga o'zgaradi. Chiqim tarixi `exits` jadvalida saqlanadi.
+**Muhim:**
+- Mahsulot `products` jadvalidan **o'chirilmaydi**, faqat statusi `exited` ga o'zgaradi
+- Chiqim tarixi `exits` jadvalida saqlanadi
+- Chiqim va product status o'zgarishi **atomik transaction** bilan yoziladi
+- `exits` jadvalida `created_by_admin_id` va `note` ustunlari mavjud
 
 ## Admin: Hisobot
 

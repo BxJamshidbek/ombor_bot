@@ -8,8 +8,10 @@ from app.services.formatting_service import (
 
 def make_product(name: str, kg: float = 10, price: float = 2000,
                  days: int = 30, total: float = 600000,
-                 status: str = "active", date: str = "2026-07-07T00:00:00"):
+                 status: str = "active", date: str = "2026-07-07T00:00:00",
+                 _id: int = 1):
     return {
+        "id": _id,
         "product_name": name,
         "kg_amount": kg,
         "price_per_kg": price,
@@ -138,17 +140,22 @@ class TestFormatActiveProductsForExit:
             "Bu mijozda faol mahsulotlar mavjud emas."
 
     def test_single_product(self):
-        products = [make_product("Olma")]
+        products = [make_product("Olma", _id=1)]
         result = format_active_products_for_exit(products)
         assert "Olma" in result
-        assert "1." in result
-        assert "raqamini kiriting" in result
+        assert "<b>ID:</b> 1" in result
+        assert "ID sini kiriting" in result
 
     def test_multiple_products(self):
-        products = [make_product(f"Mahsulot {i}") for i in range(3)]
+        products = [
+            make_product("Olma", _id=1),
+            make_product("Banan", _id=5),
+            make_product("Anor", _id=12),
+        ]
         result = format_active_products_for_exit(products)
-        assert "1." in result
-        assert "2." in result
-        assert "3." in result
-        assert "Mahsulot 0" in result
-        assert "Mahsulot 2" in result
+        assert "<b>ID:</b> 1" in result
+        assert "<b>ID:</b> 5" in result
+        assert "<b>ID:</b> 12" in result
+        assert "Olma" in result
+        assert "Banan" in result
+        assert "Anor" in result

@@ -43,10 +43,23 @@ async def init_db() -> None:
                 storage_days INTEGER NOT NULL,
                 total_price REAL NOT NULL,
                 exited_at TEXT NOT NULL,
+                created_by_admin_id INTEGER NOT NULL DEFAULT 0,
+                note TEXT,
                 FOREIGN KEY (product_id) REFERENCES products(id),
                 FOREIGN KEY (client_id) REFERENCES users(id)
             )
         """)
+
+        cursor = await conn.execute("PRAGMA table_info(exits)")
+        existing_cols = {row["name"] for row in await cursor.fetchall()}
+        if "created_by_admin_id" not in existing_cols:
+            await conn.execute(
+                "ALTER TABLE exits ADD COLUMN created_by_admin_id INTEGER NOT NULL DEFAULT 0"
+            )
+        if "note" not in existing_cols:
+            await conn.execute(
+                "ALTER TABLE exits ADD COLUMN note TEXT"
+            )
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -237,47 +250,43 @@ async def get_product_by_id(product_id: int) -> dict | None:
         await conn.close()
 
 
-async def mark_product_exited(product_id: int) -> None:
+async def exit_product(product_id: int, admin_id: int, note: str | None = None) -> bool:
     conn = await get_connection()
     now = datetime.now(timezone.utc).isoformat()
     try:
+        await conn.execute("PRAGMA foreign_keys=ON;")
+        cursor = await conn.execute(
+            "SELECT * FROM products WHERE id = ?",
+            (product_id,),
+        )
+        product = await cursor.fetchone()
+        if product is None or product["status"] != "active":
+            return False
+
+        await conn.execute(
+            """
+            INSERT INTO exits
+                (product_id, client_id, telegram_id, phone, client_name,
+                 product_name, kg_amount, price_per_kg, storage_days,
+                 total_price, exited_at, created_by_admin_id, note)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                product["id"], product["client_id"], product["telegram_id"],
+                product["phone"], product["client_name"], product["product_name"],
+                product["kg_amount"], product["price_per_kg"],
+                product["storage_days"], product["total_price"], now,
+                admin_id, note,
+            ),
+        )
         await conn.execute(
             "UPDATE products SET status = 'exited', updated_at = ? WHERE id = ?",
             (now, product_id),
         )
         await conn.commit()
-    finally:
-        await conn.close()
-
-
-async def create_exit(
-    product_id: int,
-    client_id: int,
-    telegram_id: int,
-    phone: str,
-    client_name: str | None,
-    product_name: str,
-    kg_amount: float,
-    price_per_kg: float,
-    storage_days: int,
-    total_price: float,
-) -> int:
-    conn = await get_connection()
-    now = datetime.now(timezone.utc).isoformat()
-    try:
-        cursor = await conn.execute(
-            """
-            INSERT INTO exits
-                (product_id, client_id, telegram_id, phone, client_name,
-                 product_name, kg_amount, price_per_kg, storage_days,
-                 total_price, exited_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (product_id, client_id, telegram_id, phone, client_name,
-             product_name, kg_amount, price_per_kg, storage_days,
-             total_price, now),
-        )
-        await conn.commit()
-        return cursor.lastrowid
+        return True
+    except Exception:
+        await conn.rollback()
+        return False
     finally:
         await conn.close()

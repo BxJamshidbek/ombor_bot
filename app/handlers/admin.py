@@ -7,13 +7,13 @@ from datetime import datetime, timezone
 
 from app.config import config
 from app.database import (
-    create_exit,
     create_product,
+    exit_product,
     get_active_products_for_client,
     get_admin_stats,
     get_all_clients,
+    get_product_by_id,
     get_user_by_phone,
-    mark_product_exited,
 )
 from app.services.formatting_service import (
     format_active_products_for_exit,
@@ -365,14 +365,14 @@ async def exit_product_client_phone(message: Message, state: FSMContext):
         products=products,
     )
 
-    await state.set_state(AdminExitProduct.waiting_for_product_selection)
+    await state.set_state(AdminExitProduct.waiting_for_product_id)
     await message.answer(
         format_active_products_for_exit(products),
         reply_markup=cancel_kb(),
     )
 
 
-@router.message(AdminExitProduct.waiting_for_product_selection, F.text)
+@router.message(AdminExitProduct.waiting_for_product_id, F.text)
 async def exit_product_select(message: Message, state: FSMContext):
     text = message.text.strip()
 
@@ -381,20 +381,36 @@ async def exit_product_select(message: Message, state: FSMContext):
         return
 
     data = await state.get_data()
-    products: list[dict] = data["products"]
-
     try:
-        idx = int(text) - 1
-        if idx < 0 or idx >= len(products):
-            raise ValueError
-    except (ValueError, IndexError):
+        product_id = int(text)
+    except ValueError:
         await message.answer(
-            f"Noto'g'ri raqam. 1 dan {len(products)} gacha son kiriting:",
+            "Noto'g'ri ID. Mahsulot ID sini raqam ko'rinishida kiriting:",
             reply_markup=cancel_kb(),
         )
         return
 
-    product = products[idx]
+    product = await get_product_by_id(product_id)
+    if product is None:
+        await message.answer(
+            "Bu ID bilan mahsulot topilmadi. Qaytadan kiriting:",
+            reply_markup=cancel_kb(),
+        )
+        return
+
+    if product["status"] != "active":
+        await message.answer(
+            "Bu mahsulot allaqachon chiqim qilingan yoki faol emas. Boshqa ID kiriting:",
+            reply_markup=cancel_kb(),
+        )
+        return
+
+    if product["phone"] != data["client_phone"]:
+        await message.answer(
+            "Bu mahsulot ushbu mijozga tegishli emas. Boshqa ID kiriting:",
+            reply_markup=cancel_kb(),
+        )
+        return
 
     await state.update_data(
         selected_product_id=product["id"],
@@ -405,18 +421,36 @@ async def exit_product_select(message: Message, state: FSMContext):
         selected_total=product["total_price"],
     )
 
+    await state.set_state(AdminExitProduct.waiting_for_note)
+    await message.answer(
+        "Izoh kiriting yoki izohsiz davom etish uchun '-' yuboring:",
+        reply_markup=cancel_kb(),
+    )
+
+
+@router.message(AdminExitProduct.waiting_for_note, F.text)
+async def exit_product_note(message: Message, state: FSMContext):
+    text = message.text.strip()
+
+    if text == "❌ Bekor qilish":
+        await cancel_flow(message, state)
+        return
+
+    note = None if text == "-" else text
+    data = await state.get_data()
+    await state.update_data(note=note)
+
+    product_name = data["selected_product_name"]
     summary = (
-        f"📤 <b>Chiqariladigan mahsulot</b>\n\n"
+        f"📤 <b>Chiqim tasdiqlash</b>\n\n"
         f"<b>Mijoz:</b> {data['client_name'] or 'Ismsiz'}\n"
         f"<b>Telefon:</b> {data['client_phone']}\n"
         f"───────────────\n"
-        f"<b>Mahsulot:</b> {product['product_name']}\n"
-        f"<b>Kg:</b> {product['kg_amount']}\n"
-        f"<b>1 kg narxi:</b> {product['price_per_kg']:,.0f} so'm\n"
-        f"<b>Saqlash muddati:</b> {product['storage_days']} kun\n"
-        f"───────────────\n"
-        f"<b>Umumiy summa:</b> {product['total_price']:,.0f} so'm\n\n"
-        f"Chiqarishni tasdiqlaysizmi?"
+        f"<b>Mahsulot:</b> {product_name}\n"
+        f"<b>Kg:</b> {data['selected_kg']}\n"
+        f"<b>Umumiy summa:</b> {data['selected_total']:,.0f} so'm\n"
+        f"<b>Izoh:</b> {note or '—'}\n\n"
+        f"Chiqim qilinsinmi?"
     )
 
     await state.set_state(AdminExitProduct.waiting_for_confirmation)
@@ -433,26 +467,23 @@ async def exit_product_confirm(message: Message, state: FSMContext):
 
     if text == "Ha ✅":
         data = await state.get_data()
-
-        await create_exit(
+        ok = await exit_product(
             product_id=data["selected_product_id"],
-            client_id=data["client_id"],
-            telegram_id=data["client_telegram_id"],
-            phone=data["client_phone"],
-            client_name=data.get("client_name"),
-            product_name=data["selected_product_name"],
-            kg_amount=data["selected_kg"],
-            price_per_kg=data["selected_price"],
-            storage_days=data["selected_storage_days"],
-            total_price=data["selected_total"],
+            admin_id=message.from_user.id,
+            note=data.get("note"),
         )
-        await mark_product_exited(data["selected_product_id"])
 
         await state.clear()
-        await message.answer(
-            "Mahsulot chiqarildi va chiqim sifatida qayd etildi ✅",
-            reply_markup=admin_panel_kb(),
-        )
+        if ok:
+            await message.answer(
+                "Mahsulot chiqim qilindi ✅",
+                reply_markup=admin_panel_kb(),
+            )
+        else:
+            await message.answer(
+                "Chiqim qilishda xatolik bo'ldi yoki mahsulot allaqachon chiqim qilingan.",
+                reply_markup=admin_panel_kb(),
+            )
 
     elif text == "Yo'q ❌":
         await state.clear()
