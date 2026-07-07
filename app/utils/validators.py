@@ -1,9 +1,21 @@
 import re
 
 
+def normalize_phone(phone: str) -> str:
+    digits = re.sub(r"\D", "", phone)
+
+    if len(digits) == 12 and digits.startswith("998"):
+        return f"+{digits}"
+
+    if len(digits) == 9:
+        return f"+998{digits}"
+
+    return f"+{digits}"
+
+
 def validate_phone_number(phone: str) -> bool:
-    cleaned = re.sub(r"[+\s\-()]", "", phone)
-    return cleaned.isdigit() and len(cleaned) >= 10
+    normalized = normalize_phone(phone)
+    return bool(re.match(r"^\+998\d{9}$", normalized))
 
 
 def validate_quantity(value: str) -> float | None:
@@ -14,7 +26,3 @@ def validate_quantity(value: str) -> float | None:
         return qty
     except (ValueError, TypeError):
         return None
-
-
-def normalize_phone(phone: str) -> str:
-    return re.sub(r"[+\s\-()]", "", phone)

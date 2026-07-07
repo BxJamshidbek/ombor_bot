@@ -53,6 +53,31 @@ So'ng `.env` faylini ochib, quyidagilarni to'ldiring:
 python -m app.main
 ```
 
+## /start orqali ro'yxatdan o'tish
+
+1. Foydalanuvchi `/start` bosadi
+2. Bot Telegram ID orqali foydalanuvchini tekshiradi
+3. Agar foydalanuvchi avval ro'yxatdan o'tgan bo'lsa: "Siz allaqachon ro'yxatdan o'tgansiz ✅"
+4. Agar ro'yxatdan o'tmagan bo'lsa: telefon raqam so'raladi
+5. Foydalanuvchi "📱 Telefon raqamni ulashish" tugmasini bosadi
+6. Telefon raqam validator orqali tekshiriladi va normalizatsiya qilinadi
+7. Ma'lumotlar SQLite bazaga yoziladi
+8. Foydalanuvchi asosiy menyuga o'tadi
+
+### Telefon raqam qanday yuboriladi
+
+Telegram dagi `request_contact=True` tugmasi orqali. Foydalanuvchi faqat o'z raqamini yuborishi mumkin — boshqa odamning contacti qabul qilinmaydi.
+
+### DB qayerda yaratiladi
+
+SQLite fayli `data/ombor_bot.sqlite3` da yaratiladi. Ushbu papka `.gitignore` orqali gitdan chiqarib tashlangan.
+
+### DB'ni tekshirish
+
+```bash
+sqlite3 data/ombor_bot.sqlite3 "SELECT telegram_id, phone, full_name, username, role, created_at FROM users;"
+```
+
 ## Xavfsizlik
 
 - `.env` faylini **hech qachon** gitga push qilmang

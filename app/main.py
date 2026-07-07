@@ -28,7 +28,11 @@ async def main():
 
     await init_db()
 
-    await sheets_service.initialize()
+    try:
+        await sheets_service.initialize()
+        logger.info("Google Sheets initialized")
+    except Exception as e:
+        logger.warning("Google Sheets not available: %s", e)
 
     dp.include_router(start.router)
     dp.include_router(admin.router)
