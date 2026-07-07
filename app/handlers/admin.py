@@ -3,10 +3,13 @@ from aiogram.filters import Command, Filter, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from datetime import datetime, timezone
+
 from app.config import config
 from app.database import create_product, get_user_by_phone
 from app.keyboards import admin_panel_kb, cancel_kb, confirmation_kb
 from app.services.calculation_service import calculate_total_price
+from app.services.sheets_service import sheets_service
 from app.states import AdminAddProduct, AdminAddClient, AdminRemoveProduct
 from app.utils.validators import (
     normalize_phone,
@@ -222,11 +225,26 @@ async def add_product_confirm(message: Message, state: FSMContext):
             storage_days=data["storage_days"],
             total_price=data["total_price"],
         )
+
+        product = {
+            **data,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "status": "active",
+        }
+        sheets_ok = await sheets_service.append_product_row(product)
+
         await state.clear()
-        await message.answer(
-            "Mahsulot bazaga saqlandi ✅",
-            reply_markup=admin_panel_kb(),
-        )
+        if sheets_ok:
+            await message.answer(
+                "Mahsulot bazaga saqlandi ✅",
+                reply_markup=admin_panel_kb(),
+            )
+        else:
+            await message.answer(
+                "Mahsulot SQLite bazaga saqlandi ✅, "
+                "lekin Google Sheets'ga yozishda xatolik bo'ldi ⚠️",
+                reply_markup=admin_panel_kb(),
+            )
 
     elif text == "Yo'q ❌":
         await state.clear()

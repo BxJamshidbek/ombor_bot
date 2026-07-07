@@ -1,5 +1,5 @@
 import aiosqlite
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.config import config
 
@@ -86,7 +86,7 @@ async def create_user(
     role: str = "client",
 ) -> int:
     conn = await get_connection()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     try:
         cursor = await conn.execute(
             """
@@ -113,7 +113,7 @@ async def create_product(
     total_price: float,
 ) -> int:
     conn = await get_connection()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     try:
         cursor = await conn.execute(
             """

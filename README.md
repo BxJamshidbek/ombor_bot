@@ -112,6 +112,52 @@ ADMIN_IDS=123456789,987654321
 
 Telegram ID'ni aniqlash uchun botga `/start` bosib, so'ngra https://t.me/userinfobot orqali tekshirish mumkin.
 
+## Google Sheets
+
+### Google Cloud'da service account yaratish
+
+1. [Google Cloud Console](https://console.cloud.google.com/) ga o'ting
+2. Loyiha yarating yoki mavjud loyihani tanlang
+3. "APIs & Services" → "Credentials" ga o'ting
+4. "Create Credentials" → "Service Account" ni tanlang
+5. Service account nomini kiriting va yarating
+6. Yaratilgandan keyin "Keys" → "Add Key" → "JSON" ni tanlang
+7. Yuklab olingan JSON faylni `credentials/service_account.json` ga nomlab saqlang
+8. Google Sheets API ni yoqing: "APIs & Services" → "Library" → "Google Sheets API" → "Enable"
+9. Google Drive API ni ham yoqing
+
+### Google Sheets ID qayerdan olinadi
+
+Google Sheet URL'ida:
+```
+https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit
+```
+`SPREADSHEET_ID` qismi — bu sizning Sheet ID'ingiz.
+
+### Service account'ni Sheet'ga qo'shish
+
+1. Service account JSON faylini oching va `client_email` qiymatini nusxalang
+2. Google Sheet'ingizni oching
+3. "Share" (Ulashish) tugmasini bosing
+4. Service account email'ini qo'shing va "Editor" (Muharrir) rolini bering
+
+### .env sozlamalari
+
+```
+GOOGLE_SHEETS_ID=your_google_sheet_id_here
+GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
+```
+
+### Bot qanday ishlaydi
+
+- Bot start bo'lganda `SheetsService.initialize()` chaqiriladi
+- Agar credentials topilmasa, Sheets funksiyasi o'chiriladi (bot ishlashda davom etadi)
+- Admin mahsulot qo'shganda avval SQLite, keyin Google Sheets'ga yoziladi
+- Agar Sheets'ga yozishda xatolik bo'lsa, SQLite'dagi ma'lumot saqlanadi va adminga xabar chiqadi
+- Sheet avtomatik tarzda "Kirim" varaqini yaratadi va headerlarni o'zi yozadi
+
+**Muhim:** Service account JSON faylini **hech qachon** gitga push qilmang. U `.gitignore` orqali chiqarib tashlangan.
+
 ## DB ni tekshirish
 
 ### Foydalanuvchilar
