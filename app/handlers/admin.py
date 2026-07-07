@@ -16,7 +16,7 @@ from app.services.formatting_service import format_admin_stats, format_client_li
 from app.keyboards import admin_panel_kb, cancel_kb, confirmation_kb
 from app.services.calculation_service import calculate_total_price
 from app.services.sheets_service import sheets_service
-from app.states import AdminAddProduct, AdminAddClient, AdminRemoveProduct
+from app.states import AdminAddProduct
 from app.utils.validators import (
     normalize_phone,
     validate_phone_number,
@@ -290,30 +290,6 @@ async def cancel_flow(message: Message, state: FSMContext):
 @router.message(F.text == "❌ Bekor qilish", StateFilter(AdminAddProduct))
 async def cancel_product_flow(message: Message, state: FSMContext):
     await cancel_flow(message, state)
-
-
-@router.message(Command("add_client"))
-async def add_client_start(message: Message, state: FSMContext):
-    await state.set_state(AdminAddClient.waiting_for_phone)
-    await message.answer("Mijozning telefon raqamini kiriting:")
-
-
-@router.message(AdminAddClient.waiting_for_phone)
-async def add_client_phone(message: Message, state: FSMContext):
-    await state.update_data(phone=message.text)
-    await state.set_state(AdminAddClient.confirming_client)
-    await message.answer("Mijoz topildi. Ism-familiyasini kiriting:")
-
-
-@router.message(AdminAddClient.confirming_client)
-async def add_client_confirm(message: Message, state: FSMContext):
-    data = await state.get_data()
-    await message.answer(
-        f"✅ Mijoz qo'shildi:\n"
-        f"Telefon: {data.get('phone')}\n"
-        f"Ism: {message.text}"
-    )
-    await state.clear()
 
 
 @router.message(F.text == "📋 Mijozlarni ko'rish", IsAdmin())

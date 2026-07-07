@@ -70,6 +70,8 @@ Telegram'dagi `request_contact=True` tugmasi orqali. Foydalanuvchi faqat o'z raq
 
 ## Admin panel / admin mahsulot qo'shish
 
+**Muhim:** Admin mijozni qo'lda yaratmaydi. Mijoz avval `/start` bosib telefon raqamini ulashishi va o'zi ro'yxatdan o'tishi shart. Admin faqat mavjud mijozga mahsulot qo'shadi.
+
 1. Admin `/admin` buyrug'ini yuboradi
 2. Bot `ADMIN_IDS` ro'yxati orqali adminlikni tekshiradi
 3. Admin panel menyusi ochiladi

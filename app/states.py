@@ -5,11 +5,6 @@ class Registration(StatesGroup):
     waiting_for_phone = State()
 
 
-class AdminAddClient(StatesGroup):
-    waiting_for_phone = State()
-    confirming_client = State()
-
-
 class AdminAddProduct(StatesGroup):
     waiting_for_client_phone = State()
     waiting_for_product_name = State()
