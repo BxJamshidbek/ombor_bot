@@ -24,6 +24,7 @@ def main_menu_kb(role: str) -> ReplyKeyboardMarkup:
 def admin_panel_kb() -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
     builder.button(text="➕ Mahsulot qo'shish")
+    builder.button(text="📤 Mahsulot chiqarish")
     builder.button(text="📋 Mijozlarni ko'rish")
     builder.button(text="📊 Hisobot")
     builder.button(text="❓ Yordam")

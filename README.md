@@ -167,6 +167,21 @@ GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
 3. Agar mijoz yo'q bo'lsa: "Hozircha mijozlar mavjud emas."
 4. Format: ism, telefon, Telegram ID, sana (ko'pi bilan 20 ta, qolgani "Yana X ta mijoz bor")
 
+## Admin: Mahsulot chiqarish
+
+1. Admin "📤 Mahsulot chiqarish" tugmasini bosadi
+2. Bot mijozning telefon raqamini so'raydi
+3. Admin raqamni kiritadi, bot normalize qiladi va `users` jadvalidan qidiradi
+4. Agar mijoz topilsa, bot uning faol mahsulotlarini ro'yxatini ko'rsatadi
+5. Admin chiqariladigan mahsulot raqamini kiritadi
+6. Bot tanlangan mahsulot ma'lumotlarini ko'rsatadi va tasdiqlashni so'raydi
+7. "Ha ✅" bossa:
+   - `products` jadvalidagi mahsulot statusi `exited` ga o'zgaradi
+   - `exits` jadvaliga chiqim yozuvi qo'shiladi
+8. "Yo'q ❌" yoki "❌ Bekor qilish" bossa jarayon bekor qilinadi
+
+**Muhim:** Mahsulot `products` jadvalidan o'chirilmaydi, faqat statusi `exited` ga o'zgaradi. Chiqim tarixi `exits` jadvalida saqlanadi.
+
 ## Admin: Hisobot
 
 1. Admin "📊 Hisobot" tugmasini bosadi

@@ -47,6 +47,25 @@ def format_client_list(clients: list[dict], limit: int = 20) -> str:
     return "\n\n".join(lines)
 
 
+def format_active_products_for_exit(products: list[dict]) -> str:
+    if not products:
+        return "Bu mijozda faol mahsulotlar mavjud emas."
+
+    lines = ["📤 <b>Chiqarish uchun mahsulotlar:</b>\n"]
+    for i, p in enumerate(products, 1):
+        lines.append(
+            f"{i}. <b>{p['product_name']}</b>\n"
+            f"   Kg: {p['kg_amount']}\n"
+            f"   Narxi: {p['price_per_kg']:,.0f} so'm/kg\n"
+            f"   Saqlash: {p['storage_days']} kun\n"
+            f"   Summa: {p['total_price']:,.0f} so'm\n"
+            f"   Sana: {p['created_at'][:10]}"
+        )
+
+    lines.append("\nChiqariladigan mahsulot raqamini kiriting:")
+    return "\n\n".join(lines)
+
+
 def format_admin_stats(stats: dict) -> str:
     return (
         "📊 <b>Ombor hisoboti</b>\n\n"

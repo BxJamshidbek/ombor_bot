@@ -1,4 +1,5 @@
 from app.services.formatting_service import (
+    format_active_products_for_exit,
     format_admin_stats,
     format_client_list,
     format_product_list,
@@ -129,3 +130,25 @@ class TestFormatAdminStats:
         }
         result = format_admin_stats(stats)
         assert "0" in result
+
+
+class TestFormatActiveProductsForExit:
+    def test_empty(self):
+        assert format_active_products_for_exit([]) == \
+            "Bu mijozda faol mahsulotlar mavjud emas."
+
+    def test_single_product(self):
+        products = [make_product("Olma")]
+        result = format_active_products_for_exit(products)
+        assert "Olma" in result
+        assert "1." in result
+        assert "raqamini kiriting" in result
+
+    def test_multiple_products(self):
+        products = [make_product(f"Mahsulot {i}") for i in range(3)]
+        result = format_active_products_for_exit(products)
+        assert "1." in result
+        assert "2." in result
+        assert "3." in result
+        assert "Mahsulot 0" in result
+        assert "Mahsulot 2" in result

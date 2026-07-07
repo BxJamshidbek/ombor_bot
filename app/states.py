@@ -14,6 +14,7 @@ class AdminAddProduct(StatesGroup):
     waiting_for_confirmation = State()
 
 
-class AdminRemoveProduct(StatesGroup):
-    waiting_for_product = State()
-    waiting_for_quantity = State()
+class AdminExitProduct(StatesGroup):
+    waiting_for_client_phone = State()
+    waiting_for_product_selection = State()
+    waiting_for_confirmation = State()
