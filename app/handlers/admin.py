@@ -6,7 +6,13 @@ from aiogram.types import Message
 from datetime import datetime, timezone
 
 from app.config import config
-from app.database import create_product, get_user_by_phone
+from app.database import (
+    create_product,
+    get_admin_stats,
+    get_all_clients,
+    get_user_by_phone,
+)
+from app.services.formatting_service import format_admin_stats, format_client_list
 from app.keyboards import admin_panel_kb, cancel_kb, confirmation_kb
 from app.services.calculation_service import calculate_total_price
 from app.services.sheets_service import sheets_service
@@ -231,10 +237,15 @@ async def add_product_confirm(message: Message, state: FSMContext):
             "created_at": datetime.now(timezone.utc).isoformat(),
             "status": "active",
         }
-        sheets_ok = await sheets_service.append_product_row(product)
-
         await state.clear()
-        if sheets_ok:
+
+        if not sheets_service.is_configured():
+            await message.answer(
+                "Mahsulot SQLite bazaga saqlandi ✅. "
+                "Google Sheets sozlanmagan, shuning uchun Sheets'ga yozilmadi.",
+                reply_markup=admin_panel_kb(),
+            )
+        elif await sheets_service.append_product_row(product):
             await message.answer(
                 "Mahsulot bazaga saqlandi ✅",
                 reply_markup=admin_panel_kb(),
@@ -306,8 +317,14 @@ async def add_client_confirm(message: Message, state: FSMContext):
 
 
 @router.message(F.text == "📋 Mijozlarni ko'rish", IsAdmin())
-async def list_clients_placeholder(message: Message):
-    await message.answer(
-        "Bu funksiya hozircha ishga tushirilmagan.",
-        reply_markup=admin_panel_kb(),
-    )
+async def list_clients(message: Message):
+    clients = await get_all_clients()
+    text = format_client_list(clients)
+    await message.answer(text, reply_markup=admin_panel_kb())
+
+
+@router.message(F.text == "📊 Hisobot", IsAdmin())
+async def admin_stats(message: Message):
+    stats = await get_admin_stats()
+    text = format_admin_stats(stats)
+    await message.answer(text, reply_markup=admin_panel_kb())

@@ -22,3 +22,37 @@ def format_product_list(products: list[dict], limit: int = 10) -> str:
                      f"To'liq hisobot keyingi bosqichda qo'shiladi.")
 
     return "\n\n".join(lines)
+
+
+def format_client_list(clients: list[dict], limit: int = 20) -> str:
+    if not clients:
+        return "Hozircha mijozlar mavjud emas."
+
+    lines = ["📋 <b>Mijozlar ro'yxati:</b>\n"]
+    shown = clients[:limit]
+
+    for i, c in enumerate(shown, 1):
+        name = c.get("full_name") or "Ismsiz"
+        lines.append(
+            f"{i}. {name}\n"
+            f"   Telefon: {c['phone']}\n"
+            f"   Telegram ID: {c['telegram_id']}\n"
+            f"   Sana: {c['created_at'][:10]}"
+        )
+
+    remaining = len(clients) - limit
+    if remaining > 0:
+        lines.append(f"\nYana {remaining} ta mijoz bor.")
+
+    return "\n\n".join(lines)
+
+
+def format_admin_stats(stats: dict) -> str:
+    return (
+        "📊 <b>Ombor hisoboti</b>\n\n"
+        f"Mijozlar soni: {stats['total_clients']}\n"
+        f"Jami mahsulot yozuvlari: {stats['total_products']}\n"
+        f"Faol mahsulotlar: {stats['active_products']}\n"
+        f"Faol kg jami: {stats['total_kg']:,.1f} kg\n"
+        f"Umumiy summa: {stats['total_amount']:,.0f} so'm"
+    )

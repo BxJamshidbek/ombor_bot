@@ -1,4 +1,8 @@
-from app.services.formatting_service import format_product_list
+from app.services.formatting_service import (
+    format_admin_stats,
+    format_client_list,
+    format_product_list,
+)
 
 
 def make_product(name: str, kg: float = 10, price: float = 2000,
@@ -58,3 +62,70 @@ def test_formatting_elements():
     assert "1,200,000" in result
     assert "active" in result
     assert "2026-07-07" in result
+
+
+def make_client(name: str = "Ali Valiyev", phone: str = "+998901234567",
+                tid: int = 123456789, date: str = "2026-07-07T00:00:00"):
+    return {
+        "full_name": name,
+        "phone": phone,
+        "telegram_id": tid,
+        "created_at": date,
+    }
+
+
+class TestFormatClientList:
+    def test_empty(self):
+        result = format_client_list([])
+        assert result == "Hozircha mijozlar mavjud emas."
+
+    def test_one_client(self):
+        clients = [make_client()]
+        result = format_client_list(clients)
+        assert "1." in result
+        assert "Ali Valiyev" in result
+        assert "+998901234567" in result
+        assert "123456789" in result
+
+    def test_limit_exceeded(self):
+        clients = [make_client(name=f"Client {i}") for i in range(21)]
+        result = format_client_list(clients)
+        assert "Yana 1 ta mijoz bor" in result
+
+    def test_within_limit(self):
+        clients = [make_client(name=f"Client {i}") for i in range(20)]
+        result = format_client_list(clients)
+        assert "Yana" not in result
+
+    def test_no_name(self):
+        clients = [make_client(name=None)]
+        result = format_client_list(clients)
+        assert "Ismsiz" in result
+
+
+class TestFormatAdminStats:
+    def test_all_fields(self):
+        stats = {
+            "total_clients": 10,
+            "total_products": 25,
+            "active_products": 23,
+            "total_kg": 530.5,
+            "total_amount": 4500000,
+        }
+        result = format_admin_stats(stats)
+        assert "10" in result
+        assert "25" in result
+        assert "23" in result
+        assert "530.5" in result
+        assert "4,500,000" in result
+
+    def test_zeros(self):
+        stats = {
+            "total_clients": 0,
+            "total_products": 0,
+            "active_products": 0,
+            "total_kg": 0,
+            "total_amount": 0,
+        }
+        result = format_admin_stats(stats)
+        assert "0" in result

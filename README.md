@@ -158,6 +158,37 @@ GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
 
 **Muhim:** Service account JSON faylini **hech qachon** gitga push qilmang. U `.gitignore` orqali chiqarib tashlangan.
 
+## Admin: Mijozlar ro'yxati
+
+1. Admin "📋 Mijozlarni ko'rish" tugmasini bosadi
+2. Bot `get_all_clients()` orqali barcha `role='client'` foydalanuvchilarni oladi
+3. Agar mijoz yo'q bo'lsa: "Hozircha mijozlar mavjud emas."
+4. Format: ism, telefon, Telegram ID, sana (ko'pi bilan 20 ta, qolgani "Yana X ta mijoz bor")
+
+## Admin: Hisobot
+
+1. Admin "📊 Hisobot" tugmasini bosadi
+2. Bot `get_admin_stats()` orqali quyidagilarni hisoblaydi:
+   - Mijozlar soni (`role='client'` dagi userlar)
+   - Jami mahsulot yozuvlari (barcha products)
+   - Faol mahsulotlar (`status='active'`)
+   - Faol kg jami (`active products` dagi `kg_amount` SUM)
+   - Umumiy summa (`active products` dagi `total_price` SUM)
+
+3. Format:
+
+```
+📊 Ombor hisoboti
+
+Mijozlar soni: 10
+Jami mahsulot yozuvlari: 25
+Faol mahsulotlar: 23
+Faol kg jami: 530.5 kg
+Umumiy summa: 4,500,000 so'm
+```
+
+
+
 ## DB ni tekshirish
 
 ### Foydalanuvchilar

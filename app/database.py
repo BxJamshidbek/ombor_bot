@@ -142,3 +142,52 @@ async def get_products_by_client_id(client_id: int) -> list[dict]:
         return [dict(row) for row in rows]
     finally:
         await conn.close()
+
+
+async def get_all_clients() -> list[dict]:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT * FROM users WHERE role = 'client' ORDER BY created_at DESC"
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        await conn.close()
+
+
+async def get_admin_stats() -> dict:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT COUNT(*) as cnt FROM users WHERE role = 'client'"
+        )
+        total_clients = (await cursor.fetchone())["cnt"]
+
+        cursor = await conn.execute("SELECT COUNT(*) as cnt FROM products")
+        total_products = (await cursor.fetchone())["cnt"]
+
+        cursor = await conn.execute(
+            "SELECT COUNT(*) as cnt FROM products WHERE status = 'active'"
+        )
+        active_products = (await cursor.fetchone())["cnt"]
+
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(kg_amount), 0) as s FROM products WHERE status = 'active'"
+        )
+        total_kg = (await cursor.fetchone())["s"]
+
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(total_price), 0) as s FROM products WHERE status = 'active'"
+        )
+        total_amount = (await cursor.fetchone())["s"]
+
+        return {
+            "total_clients": total_clients,
+            "total_products": total_products,
+            "active_products": active_products,
+            "total_kg": total_kg,
+            "total_amount": total_amount,
+        }
+    finally:
+        await conn.close()
