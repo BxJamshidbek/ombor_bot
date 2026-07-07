@@ -1,5 +1,6 @@
 import aiosqlite
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from math import ceil
 
 from app.config import config
 
@@ -287,6 +288,7 @@ async def exit_product(product_id: int, admin_id: int, note: str | None = None) 
 
         return {
             "product_id": product["id"],
+            "client_id": product["client_id"],
             "telegram_id": product["telegram_id"],
             "phone": product["phone"],
             "client_name": product["client_name"],
@@ -302,5 +304,29 @@ async def exit_product(product_id: int, admin_id: int, note: str | None = None) 
     except Exception:
         await conn.rollback()
         return None
+    finally:
+        await conn.close()
+
+
+async def get_expiring_products(days_ahead: int = 3) -> list[dict]:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT * FROM products WHERE status = 'active'"
+        )
+        rows = await cursor.fetchall()
+        now = datetime.now(timezone.utc)
+        result = []
+        for row in rows:
+            p = dict(row)
+            created = datetime.fromisoformat(p["created_at"])
+            expire = created + timedelta(days=p["storage_days"])
+            remaining = (expire - now).total_seconds() / 86400
+            if remaining <= days_ahead:
+                p["expire_at"] = expire.strftime("%Y-%m-%d")
+                p["remaining_days"] = int(-ceil(-remaining)) if remaining >= 0 else int(remaining)
+                result.append(p)
+        result.sort(key=lambda x: x["remaining_days"])
+        return result
     finally:
         await conn.close()

@@ -12,6 +12,7 @@ from app.database import (
     get_active_products_for_client,
     get_admin_stats,
     get_all_clients,
+    get_expiring_products,
     get_product_by_id,
     get_user_by_phone,
 )
@@ -19,6 +20,7 @@ from app.services.formatting_service import (
     format_active_products_for_exit,
     format_admin_stats,
     format_client_list,
+    format_expiring_products,
 )
 from app.keyboards import admin_panel_kb, cancel_kb, confirmation_kb
 from app.services.calculation_service import calculate_total_price
@@ -310,6 +312,13 @@ async def list_clients(message: Message):
 async def admin_stats(message: Message):
     stats = await get_admin_stats()
     text = format_admin_stats(stats)
+    await message.answer(text, reply_markup=admin_panel_kb())
+
+
+@router.message(F.text == "⏰ Muddat nazorati", IsAdmin())
+async def admin_expiring_products(message: Message):
+    products = await get_expiring_products(days_ahead=3)
+    text = format_expiring_products(products)
     await message.answer(text, reply_markup=admin_panel_kb())
 
 

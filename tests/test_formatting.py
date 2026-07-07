@@ -2,6 +2,7 @@ from app.services.formatting_service import (
     format_active_products_for_exit,
     format_admin_stats,
     format_client_list,
+    format_expiring_products,
     format_product_list,
 )
 
@@ -158,4 +159,49 @@ class TestFormatActiveProductsForExit:
         assert "<b>ID:</b> 12" in result
         assert "Olma" in result
         assert "Banan" in result
+        assert "Anor" in result
+
+
+def make_expiring(name: str, client_name: str = "Ali Valiyev",
+                  phone: str = "+998901234567", kg: float = 20,
+                  expire_at: str = "2026-07-10", remaining_days: int = 2,
+                  _id: int = 1):
+    return {
+        "id": _id,
+        "product_name": name,
+        "client_name": client_name,
+        "phone": phone,
+        "kg_amount": kg,
+        "expire_at": expire_at,
+        "remaining_days": remaining_days,
+    }
+
+
+class TestFormatExpiringProducts:
+    def test_empty(self):
+        result = format_expiring_products([])
+        assert result == "Yaqin kunlarda muddati tugaydigan faol mahsulotlar yo'q."
+
+    def test_remaining_2_days(self):
+        products = [make_expiring("Olma", remaining_days=2)]
+        result = format_expiring_products(products)
+        assert "Olma" in result
+        assert "ID:" in result
+        assert "2 kun" in result
+        assert "muddati o'tgan" not in result
+
+    def test_expired(self):
+        products = [make_expiring("Banan", remaining_days=-3)]
+        result = format_expiring_products(products)
+        assert "Banan" in result
+        assert "muddati o'tgan" in result
+        assert "3 kun oldin" in result
+
+    def test_mixed_order(self):
+        products = [
+            make_expiring("Anor", remaining_days=5),
+            make_expiring("Olma", remaining_days=-2),
+        ]
+        result = format_expiring_products(products)
+        assert "Olma" in result
         assert "Anor" in result

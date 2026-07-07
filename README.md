@@ -189,6 +189,14 @@ GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
 11. Admin Telegram ID
 12. Izoh
 
+## Admin: Muddat nazorati
+
+1. Admin "⏰ Muddat nazorati" tugmasini bosadi
+2. Bot `get_expiring_products(days_ahead=3)` orqali faol mahsulotlarni tekshiradi
+3. `created_at + storage_days` hisoblanib, 3 kun ichida tugaydigan yoki muddati o'tgan mahsulotlar ko'rsatiladi
+4. Sort: eng oldin muddati o'tganlar, keyin eng tez tugaydiganlar
+5. Faqat `status='active'` mahsulotlar hisobga olinadi
+
 ## Admin: Mijozlar ro'yxati
 
 1. Admin "📋 Mijozlarni ko'rish" tugmasini bosadi
