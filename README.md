@@ -43,7 +43,7 @@ So'ng `.env` faylini ochib, quyidagilarni to'ldiring:
 | O'zgaruvchi | Tavsif |
 |---|---|
 | `BOT_TOKEN` | Telegram bot token (https://t.me/BotFather) |
-| `ADMIN_IDS` | Admin Telegram ID lari (vergul bilan ajratib) |
+| `ADMIN_IDS` | Admin Telegram ID lari (vergul bilan ajratib, masalan: `123456789,987654321`) |
 | `GOOGLE_SHEETS_ID` | Google Sheets ID si |
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | Service account JSON fayl yo'li |
 
@@ -66,16 +66,41 @@ python -m app.main
 
 ### Telefon raqam qanday yuboriladi
 
-Telegram dagi `request_contact=True` tugmasi orqali. Foydalanuvchi faqat o'z raqamini yuborishi mumkin — boshqa odamning contacti qabul qilinmaydi.
+Telegram'dagi `request_contact=True` tugmasi orqali. Foydalanuvchi faqat o'z raqamini yuborishi mumkin — boshqa odamning contacti qabul qilinmaydi.
 
-### DB qayerda yaratiladi
+## Admin panel / admin mahsulot qo'shish
 
-SQLite fayli `data/ombor_bot.sqlite3` da yaratiladi. Ushbu papka `.gitignore` orqali gitdan chiqarib tashlangan.
+1. Admin `/admin` buyrug'ini yuboradi
+2. Bot `ADMIN_IDS` ro'yxati orqali adminlikni tekshiradi
+3. Admin panel menyusi ochiladi
+4. "➕ Mahsulot qo'shish" tugmasi bosiladi
+5. Bot mijozning telefon raqamini so'raydi
+6. Admin raqamni kiritadi, bot normalize qiladi va `users` jadvalidan qidiradi
+7. Agar mijoz topilmasa: "Avval mijoz botga /start bosib telefon raqamini ulashishi kerak"
+8. Agar mijoz topilsa: mahsulot nomi → kg miqdori → 1 kg narxi → saqlash muddati (kun) so'raladi
+9. Yakuniy hisobot ko'rsatiladi va tasdiqlash so'raladi
+10. "Ha ✅" bossa `products` jadvaliga yoziladi
+11. "Yo'q ❌" yoki "❌ Bekor qilish" bossa jarayon bekor qilinadi
 
-### DB'ni tekshirish
+### Admin ID qanday beriladi
 
+`.env` faylida:
+```
+ADMIN_IDS=123456789,987654321
+```
+
+Telegram ID'ni aniqlash uchun botga `/start` bosib, so'ngra https://t.me/userinfobot orqali tekshirish mumkin.
+
+## DB ni tekshirish
+
+### Foydalanuvchilar
 ```bash
 sqlite3 data/ombor_bot.sqlite3 "SELECT telegram_id, phone, full_name, username, role, created_at FROM users;"
+```
+
+### Mahsulotlar
+```bash
+sqlite3 data/ombor_bot.sqlite3 "SELECT client_name, phone, product_name, kg_amount, price_per_kg, storage_days, total_price, status, created_at FROM products;"
 ```
 
 ## Xavfsizlik
@@ -84,6 +109,7 @@ sqlite3 data/ombor_bot.sqlite3 "SELECT telegram_id, phone, full_name, username, 
 - Google service account JSON faylini `credentials/` papkasiga qo'ying
 - `credentials/` papkasi `.gitignore` orqali gitdan chiqarib tashlangan
 - Maxfiy ma'lumotlarni faqat `.env` orqali yuklang
+- Admin ID'lar faqat `.env` orqali sozlanadi, kodda hardcode qilinmaydi
 
 ## Loyiha tuzilishi
 

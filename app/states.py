@@ -11,12 +11,12 @@ class AdminAddClient(StatesGroup):
 
 
 class AdminAddProduct(StatesGroup):
-    waiting_for_client = State()
+    waiting_for_client_phone = State()
     waiting_for_product_name = State()
-    waiting_for_quantity = State()
-    waiting_for_unit = State()
-    waiting_for_expiry = State()
-    waiting_for_notes = State()
+    waiting_for_kg_amount = State()
+    waiting_for_price_per_kg = State()
+    waiting_for_storage_days = State()
+    waiting_for_confirmation = State()
 
 
 class AdminRemoveProduct(StatesGroup):

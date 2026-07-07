@@ -26,3 +26,13 @@ def validate_quantity(value: str) -> float | None:
         return qty
     except (ValueError, TypeError):
         return None
+
+
+def validate_positive_int(value: str) -> int | None:
+    try:
+        num = int(value)
+        if num <= 0:
+            return None
+        return num
+    except (ValueError, TypeError):
+        return None
