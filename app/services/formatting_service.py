@@ -112,11 +112,16 @@ def format_active_products_for_payment(
 def format_admin_stats(stats: dict) -> str:
     return (
         "📊 <b>Ombor hisoboti</b>\n\n"
-        f"Mijozlar soni: {stats['total_clients']}\n"
-        f"Jami mahsulot yozuvlari: {stats['total_products']}\n"
-        f"Faol mahsulotlar: {stats['active_products']}\n"
-        f"Faol kg jami: {stats['total_kg']:,.1f} kg\n"
-        f"Umumiy summa: {stats['total_amount']:,.0f} so'm\n"
-        f"To'langan: {stats['paid_amount']:,.0f} so'm\n"
-        f"Qolgan: {stats['remaining_amount']:,.0f} so'm"
+        f"👥 Mijozlar soni: {stats['total_clients']}\n"
+        f"📦 Jami mahsulot yozuvlari: {stats['total_products']}\n\n"
+        f"🟢 <b>Omborda mavjud:</b>\n"
+        f"Mahsulotlar: {stats['active_products']}\n"
+        f"Kg jami: {stats['active_kg']:,.1f} kg\n"
+        f"Umumiy summa: {stats['active_total_amount']:,.0f} so'm\n"
+        f"To'langan: {stats['active_paid_amount']:,.0f} so'm\n"
+        f"Qolgan: {stats['active_remaining_amount']:,.0f} so'm\n\n"
+        f"📤 <b>Chiqarilganlar:</b>\n"
+        f"Mahsulotlar: {stats['exited_products']}\n"
+        f"Kg jami: {stats['exited_kg']:,.1f} kg\n"
+        f"Umumiy summa: {stats['exited_total_amount']:,.0f} so'm"
     )

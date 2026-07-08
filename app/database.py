@@ -338,28 +338,50 @@ async def get_admin_stats() -> dict:
         active_products = (await cursor.fetchone())["cnt"]
 
         cursor = await conn.execute(
-            "SELECT COALESCE(SUM(kg_amount), 0) as s FROM products WHERE status = 'active'"
+            "SELECT COALESCE(SUM(kg_amount), 0) as s FROM products WHERE status = 'active' AND is_in_ombor_sheet = 1"
         )
-        total_kg = (await cursor.fetchone())["s"]
+        active_kg = (await cursor.fetchone())["s"]
 
         cursor = await conn.execute(
-            "SELECT COALESCE(SUM(total_price), 0) as s FROM products"
+            "SELECT COALESCE(SUM(total_price), 0) as s FROM products WHERE status = 'active' AND is_in_ombor_sheet = 1"
         )
-        total_amount = (await cursor.fetchone())["s"]
+        active_total_amount = (await cursor.fetchone())["s"]
 
         cursor = await conn.execute(
-            "SELECT COALESCE(SUM(amount), 0) as s FROM payments"
+            """
+            SELECT COALESCE(SUM(p.amount), 0) as s FROM payments p
+            INNER JOIN products pr ON p.product_id = pr.id
+            WHERE pr.status = 'active' AND pr.is_in_ombor_sheet = 1
+            """
         )
-        paid_amount = (await cursor.fetchone())["s"]
+        active_paid_amount = (await cursor.fetchone())["s"]
+
+        cursor = await conn.execute(
+            "SELECT COUNT(*) as cnt FROM products WHERE status = 'exited'"
+        )
+        exited_products = (await cursor.fetchone())["cnt"]
+
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(kg_amount), 0) as s FROM products WHERE status = 'exited'"
+        )
+        exited_kg = (await cursor.fetchone())["s"]
+
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(total_price), 0) as s FROM products WHERE status = 'exited'"
+        )
+        exited_total_amount = (await cursor.fetchone())["s"]
 
         return {
             "total_clients": total_clients,
             "total_products": total_products,
             "active_products": active_products,
-            "total_kg": total_kg,
-            "total_amount": total_amount,
-            "paid_amount": paid_amount,
-            "remaining_amount": total_amount - paid_amount,
+            "active_kg": active_kg,
+            "active_total_amount": active_total_amount,
+            "active_paid_amount": active_paid_amount,
+            "active_remaining_amount": max(active_total_amount - active_paid_amount, 0),
+            "exited_products": exited_products,
+            "exited_kg": exited_kg,
+            "exited_total_amount": exited_total_amount,
         }
     finally:
         await conn.close()

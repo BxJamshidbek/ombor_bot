@@ -16,6 +16,7 @@ from app.database import (
     get_admin_stats,
     get_product_by_id,
     exit_product,
+    create_payment,
     DATABASE_PATH,
 )
 
@@ -148,4 +149,91 @@ def test_admin_stats_counts_only_in_sheet():
 
     stats = _run(get_admin_stats())
     assert stats["active_products"] == 1
+    assert stats["active_kg"] == 10.0
+    assert stats["active_total_amount"] == 10000.0
+
+
+def test_stats_unsynced_not_in_active_sums():
+    client_id = _create_client()
+    p1 = _run(create_product(
+        client_id=client_id, telegram_id=99999, phone="+998901234567",
+        client_name="Test Client", product_name="Synced",
+        kg_amount=10.0, price_per_kg=1000.0, box_count=1, total_price=10000.0,
+    ))
+    _run(create_product(
+        client_id=client_id, telegram_id=99999, phone="+998901234567",
+        client_name="Test Client", product_name="Unsynced",
+        kg_amount=50.0, price_per_kg=5000.0, box_count=5, total_price=250000.0,
+    ))
+    _run(mark_product_in_ombor_sheet(p1, True))
+
+    stats = _run(get_admin_stats())
+    assert stats["active_products"] == 1
+    assert stats["active_kg"] == 10.0
+    assert stats["active_total_amount"] == 10000.0
     assert stats["total_products"] == 2
+
+
+def test_stats_excluded_exited_from_active():
+    client_id = _create_client()
+    p1 = _run(create_product(
+        client_id=client_id, telegram_id=99999, phone="+998901234567",
+        client_name="Test Client", product_name="Active",
+        kg_amount=10.0, price_per_kg=1000.0, box_count=1, total_price=10000.0,
+    ))
+    p2 = _run(create_product(
+        client_id=client_id, telegram_id=99999, phone="+998901234567",
+        client_name="Test Client", product_name="Exited",
+        kg_amount=5.0, price_per_kg=2000.0, box_count=1, total_price=10000.0,
+    ))
+    _run(mark_product_in_ombor_sheet(p1, True))
+    _run(mark_product_in_ombor_sheet(p2, True))
+    _run(exit_product(p2, admin_id=123456))
+
+    stats = _run(get_admin_stats())
+    assert stats["active_products"] == 1
+    assert stats["active_kg"] == 10.0
+    assert stats["exited_products"] == 1
+    assert stats["exited_kg"] == 5.0
+    assert stats["exited_total_amount"] == 10000.0
+
+
+def test_stats_payment_only_for_active_in_sheet():
+    client_id = _create_client()
+    p_active = _run(create_product(
+        client_id=client_id, telegram_id=99999, phone="+998901234567",
+        client_name="Test Client", product_name="Active",
+        kg_amount=10.0, price_per_kg=1000.0, box_count=1, total_price=10000.0,
+    ))
+    p_exited = _run(create_product(
+        client_id=client_id, telegram_id=99999, phone="+998901234567",
+        client_name="Test Client", product_name="Exited",
+        kg_amount=5.0, price_per_kg=2000.0, box_count=1, total_price=10000.0,
+    ))
+    _run(mark_product_in_ombor_sheet(p_active, True))
+    _run(mark_product_in_ombor_sheet(p_exited, True))
+    _run(exit_product(p_exited, admin_id=123456))
+
+    _run(create_payment(
+        client_id=client_id, product_id=p_active, telegram_id=99999,
+        phone="+998901234567", client_name="Test Client",
+        amount=3000.0, created_by_admin_id=123456,
+    ))
+    _run(create_payment(
+        client_id=client_id, product_id=p_exited, telegram_id=99999,
+        phone="+998901234567", client_name="Test Client",
+        amount=2000.0, created_by_admin_id=123456,
+    ))
+
+    stats = _run(get_admin_stats())
+    assert stats["active_paid_amount"] == 3000.0
+    assert stats["active_remaining_amount"] == 7000.0
+
+
+def test_stats_empty_ombor():
+    stats = _run(get_admin_stats())
+    assert stats["active_products"] == 0
+    assert stats["active_kg"] == 0
+    assert stats["active_total_amount"] == 0
+    assert stats["active_paid_amount"] == 0
+    assert stats["active_remaining_amount"] == 0

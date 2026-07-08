@@ -158,10 +158,13 @@ class TestFormatAdminStats:
             "total_clients": 10,
             "total_products": 25,
             "active_products": 23,
-            "total_kg": 530.5,
-            "total_amount": 4500000,
-            "paid_amount": 2000000,
-            "remaining_amount": 2500000,
+            "active_kg": 530.5,
+            "active_total_amount": 4500000,
+            "active_paid_amount": 2000000,
+            "active_remaining_amount": 2500000,
+            "exited_products": 2,
+            "exited_kg": 100.0,
+            "exited_total_amount": 800000,
         }
         result = format_admin_stats(stats)
         assert "10" in result
@@ -171,16 +174,21 @@ class TestFormatAdminStats:
         assert "4,500,000" in result
         assert "2,000,000" in result
         assert "2,500,000" in result
+        assert "Omborda mavjud" in result
+        assert "Chiqarilganlar" in result
 
     def test_zeros(self):
         stats = {
             "total_clients": 0,
             "total_products": 0,
             "active_products": 0,
-            "total_kg": 0,
-            "total_amount": 0,
-            "paid_amount": 0,
-            "remaining_amount": 0,
+            "active_kg": 0,
+            "active_total_amount": 0,
+            "active_paid_amount": 0,
+            "active_remaining_amount": 0,
+            "exited_products": 0,
+            "exited_kg": 0,
+            "exited_total_amount": 0,
         }
         result = format_admin_stats(stats)
         assert "0" in result
