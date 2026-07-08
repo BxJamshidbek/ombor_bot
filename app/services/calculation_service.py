@@ -7,6 +7,21 @@ def calculate_total_price(kg_amount: float, price_per_kg: float) -> float:
     return kg_amount * price_per_kg
 
 
+def calculate_remaining_amount(total_price: float, paid_amount: float) -> float:
+    return max(total_price - paid_amount, 0)
+
+
+def validate_payment_amount(amount: float, remaining_amount: float) -> tuple[bool, str | None]:
+    if amount <= 0:
+        return False, "To'lov summasi musbat bo'lishi kerak."
+    if amount > remaining_amount:
+        return False, (
+            f"Ortiqcha to'lov mumkin emas. "
+            f"Bu mahsulot bo'yicha qolgan summa: {remaining_amount:,.0f} so'm"
+        )
+    return True, None
+
+
 def allocate_payments_to_products(
     products: list[dict], payments: list[dict]
 ) -> dict[int, dict]:

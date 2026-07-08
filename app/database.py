@@ -45,7 +45,6 @@ async def init_db() -> None:
                 box_count INTEGER NOT NULL DEFAULT 0,
                 exited_at TEXT NOT NULL,
                 created_by_admin_id INTEGER NOT NULL DEFAULT 0,
-                note TEXT,
                 FOREIGN KEY (product_id) REFERENCES products(id),
                 FOREIGN KEY (client_id) REFERENCES users(id)
             )
@@ -56,10 +55,6 @@ async def init_db() -> None:
         if "created_by_admin_id" not in existing_cols:
             await conn.execute(
                 "ALTER TABLE exits ADD COLUMN created_by_admin_id INTEGER NOT NULL DEFAULT 0"
-            )
-        if "note" not in existing_cols:
-            await conn.execute(
-                "ALTER TABLE exits ADD COLUMN note TEXT"
             )
         if "box_count" not in existing_cols:
             await conn.execute(
@@ -97,16 +92,25 @@ async def init_db() -> None:
             CREATE TABLE IF NOT EXISTS payments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 client_id INTEGER NOT NULL,
+                product_id INTEGER,
                 telegram_id INTEGER NOT NULL,
                 phone TEXT NOT NULL,
                 client_name TEXT,
                 amount REAL NOT NULL,
-                note TEXT,
                 created_by_admin_id INTEGER NOT NULL,
                 created_at TEXT NOT NULL,
-                FOREIGN KEY (client_id) REFERENCES users(id)
+                FOREIGN KEY (client_id) REFERENCES users(id),
+                FOREIGN KEY (product_id) REFERENCES products(id)
             )
         """)
+
+        cursor = await conn.execute("PRAGMA table_info(payments)")
+        existing_pay_cols = {row["name"] for row in await cursor.fetchall()}
+        if "product_id" not in existing_pay_cols:
+            await conn.execute(
+                "ALTER TABLE payments ADD COLUMN product_id INTEGER"
+            )
+
         await conn.commit()
     finally:
         await conn.close()
@@ -193,35 +197,35 @@ async def create_product(
 
 async def create_payment(
     client_id: int,
+    product_id: int,
     telegram_id: int,
     phone: str,
     client_name: str | None,
     amount: float,
     created_by_admin_id: int,
-    note: str | None = None,
-) -> dict:
+) -> dict | None:
     conn = await get_connection()
     now = datetime.now(timezone.utc).isoformat()
     try:
         cursor = await conn.execute(
             """
             INSERT INTO payments
-                (client_id, telegram_id, phone, client_name, amount, note,
-                 created_by_admin_id, created_at)
+                (client_id, product_id, telegram_id, phone, client_name,
+                 amount, created_by_admin_id, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (client_id, telegram_id, phone, client_name, amount, note,
-             created_by_admin_id, now),
+            (client_id, product_id, telegram_id, phone, client_name,
+             amount, created_by_admin_id, now),
         )
         await conn.commit()
         return {
             "id": cursor.lastrowid,
             "client_id": client_id,
+            "product_id": product_id,
             "telegram_id": telegram_id,
             "phone": phone,
             "client_name": client_name,
             "amount": amount,
-            "note": note,
             "created_by_admin_id": created_by_admin_id,
             "created_at": now,
         }
@@ -232,17 +236,49 @@ async def create_payment(
         await conn.close()
 
 
-async def get_client_payment_summary(client_id: int) -> dict:
+async def get_product_payment_summary(product_id: int) -> dict:
     conn = await get_connection()
     try:
         cursor = await conn.execute(
-            "SELECT COALESCE(SUM(total_price), 0) as s FROM products WHERE client_id = ?",
+            "SELECT total_price FROM products WHERE id = ?",
+            (product_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return {"total_amount": 0, "paid_amount": 0, "remaining_amount": 0}
+
+        total_amount = row["total_price"]
+
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) as s FROM payments WHERE product_id = ?",
+            (product_id,),
+        )
+        paid_amount = (await cursor.fetchone())["s"]
+
+        return {
+            "total_amount": total_amount,
+            "paid_amount": paid_amount,
+            "remaining_amount": max(total_amount - paid_amount, 0),
+        }
+    finally:
+        await conn.close()
+
+
+async def get_client_active_payment_summary(client_id: int) -> dict:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(total_price), 0) as s FROM products WHERE client_id = ? AND status = 'active'",
             (client_id,),
         )
         total_amount = (await cursor.fetchone())["s"]
 
         cursor = await conn.execute(
-            "SELECT COALESCE(SUM(amount), 0) as s FROM payments WHERE client_id = ?",
+            """
+            SELECT COALESCE(SUM(p.amount), 0) as s FROM payments p
+            INNER JOIN products pr ON p.product_id = pr.id
+            WHERE pr.client_id = ? AND pr.status = 'active'
+            """,
             (client_id,),
         )
         paid_amount = (await cursor.fetchone())["s"]
@@ -250,7 +286,7 @@ async def get_client_payment_summary(client_id: int) -> dict:
         return {
             "total_amount": total_amount,
             "paid_amount": paid_amount,
-            "remaining_amount": total_amount - paid_amount,
+            "remaining_amount": max(total_amount - paid_amount, 0),
         }
     finally:
         await conn.close()
@@ -351,7 +387,7 @@ async def get_product_by_id(product_id: int) -> dict | None:
         await conn.close()
 
 
-async def exit_product(product_id: int, admin_id: int, note: str | None = None) -> dict | None:
+async def exit_product(product_id: int, admin_id: int) -> dict | None:
     conn = await get_connection()
     now = datetime.now(timezone.utc).isoformat()
     try:
@@ -369,16 +405,15 @@ async def exit_product(product_id: int, admin_id: int, note: str | None = None) 
             INSERT INTO exits
                 (product_id, client_id, telegram_id, phone, client_name,
                  product_name, kg_amount, price_per_kg, storage_days,
-                 total_price, box_count, exited_at, created_by_admin_id, note)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 total_price, box_count, exited_at, created_by_admin_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 product["id"], product["client_id"], product["telegram_id"],
                 product["phone"], product["client_name"], product["product_name"],
                 product["kg_amount"], product["price_per_kg"],
                 product["storage_days"], product["total_price"],
-                product["box_count"], now,
-                admin_id, note,
+                product["box_count"], now, admin_id,
             ),
         )
         await conn.execute(
@@ -401,7 +436,6 @@ async def exit_product(product_id: int, admin_id: int, note: str | None = None) 
             "box_count": product["box_count"],
             "exited_at": now,
             "created_by_admin_id": admin_id,
-            "note": note,
         }
     except Exception:
         await conn.rollback()
@@ -414,7 +448,7 @@ async def get_products_by_client_id_asc(client_id: int) -> list[dict]:
     conn = await get_connection()
     try:
         cursor = await conn.execute(
-            "SELECT * FROM products WHERE client_id = ? ORDER BY created_at ASC",
+            "SELECT * FROM products WHERE client_id = ? AND status = 'active' ORDER BY created_at ASC",
             (client_id,),
         )
         rows = await cursor.fetchall()
@@ -429,6 +463,19 @@ async def get_payments_by_client_id(client_id: int) -> list[dict]:
         cursor = await conn.execute(
             "SELECT * FROM payments WHERE client_id = ? ORDER BY created_at ASC",
             (client_id,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        await conn.close()
+
+
+async def get_payments_by_product_id(product_id: int) -> list[dict]:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT * FROM payments WHERE product_id = ? ORDER BY created_at ASC",
+            (product_id,),
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]

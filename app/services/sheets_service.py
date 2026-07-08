@@ -11,6 +11,7 @@ from app.config import config
 logger = logging.getLogger(__name__)
 
 MAIN_SHEET_NAME = "Ombor"
+EXITED_SHEET_NAME = "Chiqarilganlar"
 PAYMENT_HISTORY_SHEET_NAME = "To'lovlar tarixi"
 
 MAIN_HEADERS = [
@@ -27,17 +28,34 @@ MAIN_HEADERS = [
     "Qolgan summa",
     "Status",
     "Yaratilgan sana",
+    "Yangilangan sana",
+]
+
+EXITED_HEADERS = [
+    "Product ID",
+    "Telegram ID",
+    "Telefon raqam",
+    "Ism",
+    "Mahsulot nomi",
+    "Kg miqdori",
+    "Qutilar soni",
+    "1 kg narxi",
+    "Umumiy summa",
+    "To'langan summa",
+    "Qolgan summa",
+    "Status",
+    "Yaratilgan sana",
     "Chiqim sanasi",
-    "Izoh",
+    "Yangilangan sana",
 ]
 
 PAYMENT_HISTORY_HEADERS = [
     "Payment ID",
+    "Product ID",
     "Telegram ID",
     "Telefon raqam",
     "Ism",
     "To'lov summasi",
-    "Izoh",
     "Admin Telegram ID",
     "Yaratilgan sana",
 ]
@@ -63,35 +81,46 @@ def product_to_main_sheet_row(
         remaining_amount if remaining_amount is not None else total,
         product.get("status", "active"),
         product.get("created_at") or "",
-        "",
-        "",
+        product.get("updated_at") or "",
+    ]
+
+
+def product_to_exited_sheet_row(
+    exit_data: dict[str, Any],
+    paid_amount: float = 0,
+    remaining_amount: float | None = None,
+) -> list[str | int | float]:
+    total = exit_data.get("total_price", 0)
+    return [
+        exit_data.get("product_id", ""),
+        exit_data.get("telegram_id", ""),
+        exit_data.get("phone", ""),
+        exit_data.get("client_name", ""),
+        exit_data.get("product_name", ""),
+        exit_data.get("kg_amount", 0),
+        exit_data.get("box_count", 0),
+        exit_data.get("price_per_kg", 0),
+        total,
+        paid_amount,
+        remaining_amount if remaining_amount is not None else total,
+        "exited",
+        exit_data.get("created_at") or "",
+        exit_data.get("exited_at") or "",
+        exit_data.get("updated_at") or "",
     ]
 
 
 def payment_to_history_row(payment: dict[str, Any]) -> list[str | int | float]:
     return [
         payment.get("id", ""),
+        payment.get("product_id", ""),
         payment.get("telegram_id", ""),
         payment.get("phone", ""),
         payment.get("client_name", ""),
         payment.get("amount", 0),
-        payment.get("note", "") or "",
         payment.get("created_by_admin_id", ""),
         payment.get("created_at", datetime.now(timezone.utc).isoformat()),
     ]
-
-
-def payment_updates_to_payload(
-    allocation: dict[int, dict],
-) -> list[dict]:
-    updates = []
-    for pid, alloc in allocation.items():
-        updates.append({
-            "product_id": pid,
-            "paid_amount": alloc["paid_amount"],
-            "remaining_amount": alloc["remaining_amount"],
-        })
-    return updates
 
 
 class SheetsService:
@@ -99,6 +128,7 @@ class SheetsService:
         self.sheets_id: str = config.google_sheets_id
         self._client = None
         self._main_worksheet = None
+        self._exited_worksheet = None
         self._payment_worksheet = None
         self._ready = False
         self._script_mode = False
@@ -152,6 +182,7 @@ class SheetsService:
                 return
 
             for name, attr in [(MAIN_SHEET_NAME, "_main_worksheet"),
+                               (EXITED_SHEET_NAME, "_exited_worksheet"),
                                (PAYMENT_HISTORY_SHEET_NAME, "_payment_worksheet")]:
                 try:
                     ws = sh.worksheet(name)
@@ -161,14 +192,15 @@ class SheetsService:
 
             self._ready = True
             await self._ensure_headers()
-            logger.info("Google Sheets ready (sheets: %s, %s)",
-                        MAIN_SHEET_NAME, PAYMENT_HISTORY_SHEET_NAME)
+            logger.info("Google Sheets ready (sheets: %s, %s, %s)",
+                        MAIN_SHEET_NAME, EXITED_SHEET_NAME, PAYMENT_HISTORY_SHEET_NAME)
         except Exception as e:
             self._ready = False
             logger.warning("Google Sheets init failed: %s", e)
 
     async def _ensure_headers(self):
         for ws, headers in [(self._main_worksheet, MAIN_HEADERS),
+                            (self._exited_worksheet, EXITED_HEADERS),
                             (self._payment_worksheet, PAYMENT_HISTORY_HEADERS)]:
             if not ws:
                 continue
@@ -254,37 +286,71 @@ class SheetsService:
             logger.warning("Sheets append product failed: %s", e)
             return False
 
-    async def update_exit_row(self, exit_data: dict[str, Any]) -> bool:
-        exit_data["status"] = "exited"
-        row_data = {**exit_data, "id": exit_data.get("product_id")}
-        row = product_to_main_sheet_row(
-            row_data,
-            paid_amount=0,
-            remaining_amount=exit_data.get("total_price", 0),
-        )
-        data = {
-            "product_id": exit_data.get("product_id"),
-            "status": "exited",
-            "exited_at": exit_data.get("exited_at", ""),
-            "note": exit_data.get("note", "") or "",
-            "row": row,
-        }
+    async def update_product_payment(
+        self, product_id: int, paid_amount: float, remaining_amount: float
+    ) -> bool:
         if self._script_mode:
-            return await self._update_via_script("update_exit", data)
+            data = {
+                "product_id": product_id,
+                "paid_amount": paid_amount,
+                "remaining_amount": remaining_amount,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            return await self._update_via_script("update_product_payment", data)
         if not self._ready or not self._main_worksheet:
             return False
         try:
-            product_id = str(data["product_id"])
-            cell = self._main_worksheet.find(product_id, in_column=1)
+            pid = str(product_id)
+            cell = self._main_worksheet.find(pid, in_column=1)
             if cell:
-                self._main_worksheet.update_cell(cell.row, 12, "exited")
-                self._main_worksheet.update_cell(cell.row, 14, data["exited_at"])
-                self._main_worksheet.update_cell(cell.row, 15, data["note"])
+                now = datetime.now(timezone.utc).isoformat()
+                self._main_worksheet.update_cell(cell.row, 10, paid_amount)
+                self._main_worksheet.update_cell(cell.row, 11, remaining_amount)
+                self._main_worksheet.update_cell(cell.row, 14, now)
                 return True
-            self._main_worksheet.append_row(row, value_input_option="USER_ENTERED")
+            return False
+        except Exception as e:
+            logger.warning("Sheets update product payment failed: %s", e)
+            return False
+
+    async def move_product_to_exited(
+        self, exit_data: dict[str, Any], paid_amount: float, remaining_amount: float
+    ) -> bool:
+        if self._script_mode:
+            row = product_to_exited_sheet_row(
+                exit_data, paid_amount=paid_amount, remaining_amount=remaining_amount
+            )
+            data = {
+                "product_id": exit_data.get("product_id"),
+                "row": row,
+            }
+            return await self._update_via_script("move_product_to_exited", data)
+        if not self._ready or not self._main_worksheet:
+            return False
+        try:
+            pid = str(exit_data.get("product_id"))
+            cell = self._main_worksheet.find(pid, in_column=1)
+            if cell:
+                row_values = self._main_worksheet.row_values(cell.row)
+                self._main_worksheet.delete_rows(cell.row, cell.row)
+            else:
+                row_values = product_to_main_sheet_row(
+                    exit_data, paid_amount=paid_amount, remaining_amount=remaining_amount
+                )
+
+            exited_row = list(row_values)
+            while len(exited_row) < len(EXITED_HEADERS):
+                exited_row.append("")
+            exited_row[11] = "exited"
+            now = datetime.now(timezone.utc).isoformat()
+            exited_row[13] = now
+            exited_row[14] = now
+
+            if self._exited_worksheet:
+                self._exited_worksheet.append_row(exited_row, value_input_option="USER_ENTERED")
             return True
         except Exception as e:
-            logger.warning("Sheets update exit failed: %s", e)
+            logger.warning("Sheets move to exited failed: %s", e)
             return False
 
     async def append_payment_history(self, payment: dict[str, Any]) -> bool:
@@ -299,23 +365,6 @@ class SheetsService:
             return True
         except Exception as e:
             logger.warning("Sheets append payment failed: %s", e)
-            return False
-
-    async def update_payment_rows(self, updates: list[dict]) -> bool:
-        if self._script_mode:
-            return await self._update_via_script("update_payments", updates)
-        if not self._ready or not self._main_worksheet:
-            return False
-        try:
-            for u in updates:
-                pid = str(u["product_id"])
-                cell = self._main_worksheet.find(pid, in_column=1)
-                if cell:
-                    self._main_worksheet.update_cell(cell.row, 10, u["paid_amount"])
-                    self._main_worksheet.update_cell(cell.row, 11, u["remaining_amount"])
-            return True
-        except Exception as e:
-            logger.warning("Sheets update payments failed: %s", e)
             return False
 
 

@@ -2,9 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message
 
 from app.database import (
-    get_client_payment_summary,
-    get_payments_by_client_id,
-    get_products_by_client_id,
+    get_client_active_payment_summary,
     get_products_by_client_id_asc,
     get_user_by_telegram_id,
 )
@@ -23,9 +21,18 @@ async def my_products(message: Message):
         return
 
     products = await get_products_by_client_id_asc(user["id"])
-    payments = await get_payments_by_client_id(user["id"])
-    allocation = allocate_payments_to_products(products, payments)
-    summary = await get_client_payment_summary(user["id"])
+    summary = await get_client_active_payment_summary(user["id"])
+
+    allocation = {}
+    for p in products:
+        pid = p["id"]
+        paid = summary.get("paid_amount", 0)
+        total = summary.get("total_amount", 0)
+        allocation[pid] = {
+            "paid_amount": 0,
+            "remaining_amount": p["total_price"],
+        }
+
     text = format_product_list(products, payment_summary=summary, allocation=allocation)
     await message.answer(text, reply_markup=main_menu_kb(user["role"]))
 

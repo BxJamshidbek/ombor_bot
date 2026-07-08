@@ -1,5 +1,6 @@
 from app.services.formatting_service import (
     format_active_products_for_exit,
+    format_active_products_for_payment,
     format_admin_stats,
     format_client_list,
     format_product_list,
@@ -64,10 +65,8 @@ def test_formatting_elements():
     assert "Quti: 5" in result
     assert "2,000" in result
     assert "40,000" in result
-    assert "active" in result
-    assert "2026-07-07" in result
+    assert "Izoh" not in result
     assert "Saqlash muddati" not in result
-    assert "Tugash" not in result
 
 
 def test_formatting_with_payment_summary():
@@ -78,7 +77,7 @@ def test_formatting_with_payment_summary():
         "remaining_amount": 70000,
     }
     result = format_product_list(products, payment_summary=summary)
-    assert "Jami to'lov" in result
+    assert "Umumiy summa" in result
     assert "100,000" in result
     assert "To'langan" in result
     assert "30,000" in result
@@ -89,7 +88,7 @@ def test_formatting_with_payment_summary():
 def test_formatting_without_payment_summary():
     products = [make_product("Olma", total=50000)]
     result = format_product_list(products)
-    assert "Jami to'lov" not in result
+    assert "Umumiy summa" not in result
 
 
 def test_formatting_with_allocation():
@@ -98,6 +97,20 @@ def test_formatting_with_allocation():
     result = format_product_list(products, allocation=allocation)
     assert "To'langan: 15,000" in result
     assert "Qolgan: 25,000" in result
+
+
+def test_no_note_in_product_list():
+    p = make_product("Olma", total=40000)
+    result = format_product_list([p])
+    assert "Izoh" not in result
+    assert "note" not in result.lower()
+
+
+def test_product_id_in_list():
+    p = make_product("Olma", _id=42)
+    result = format_product_list([p])
+    assert "42" in result
+    assert "ID" in result
 
 
 def make_client(name: str = "Ali Valiyev", phone: str = "+998901234567",
@@ -199,3 +212,26 @@ class TestFormatActiveProductsForExit:
         assert "Olma" in result
         assert "Banan" in result
         assert "Anor" in result
+
+
+class TestFormatActiveProductsForPayment:
+    def test_empty(self):
+        assert format_active_products_for_payment([], {}) == \
+            "Bu mijozda omborda aktiv mahsulot yo'q."
+
+    def test_single_product(self):
+        products = [make_product("Olma", total=50000, _id=1)]
+        summaries = {1: {"paid_amount": 20000, "remaining_amount": 30000}}
+        result = format_active_products_for_payment(products, summaries)
+        assert "Olma" in result
+        assert "1" in result
+        assert "50,000" in result
+        assert "20,000" in result
+        assert "30,000" in result
+        assert "ID sini kiriting" in result
+
+    def test_no_overpay_info(self):
+        products = [make_product("Olma", total=50000, _id=1)]
+        summaries = {1: {"paid_amount": 50000, "remaining_amount": 0}}
+        result = format_active_products_for_payment(products, summaries)
+        assert "0 so'm" in result

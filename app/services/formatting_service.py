@@ -12,18 +12,16 @@ def format_product_list(products: list[dict], limit: int = 10,
         alloc = (allocation or {}).get(pid, {}) if pid else {}
         paid = alloc.get("paid_amount", 0)
         rem = alloc.get("remaining_amount", p.get("total_price", 0))
-        status = p.get("status", "active")
 
         lines.append(
-            f"{i}. <b>{p['product_name']}</b>\n"
+            f"{i}. <b>ID:</b> {pid}\n"
+            f"   <b>{p['product_name']}</b>\n"
             f"   Kg: {p['kg_amount']}\n"
             f"   Quti: {p.get('box_count', 0)}\n"
             f"   1 kg narxi: {p['price_per_kg']:,.0f} so'm\n"
-            f"   Umumiy summa: {p['total_price']:,.0f} so'm\n"
+            f"   Umumiy: {p['total_price']:,.0f} so'm\n"
             f"   To'langan: {paid:,.0f} so'm\n"
-            f"   Qolgan: {rem:,.0f} so'm\n"
-            f"   Status: {status}\n"
-            f"   Sana: {p['created_at'][:10]}"
+            f"   Qolgan: {rem:,.0f} so'm"
         )
 
     remaining = len(products) - limit
@@ -32,8 +30,8 @@ def format_product_list(products: list[dict], limit: int = 10,
 
     if payment_summary is not None:
         lines.append(
-            "\n💰 <b>To'lov holati</b>\n"
-            f"Jami to'lov: {payment_summary['total_amount']:,.0f} so'm\n"
+            "\n💰 <b>Jami holat</b>\n"
+            f"Umumiy summa: {payment_summary['total_amount']:,.0f} so'm\n"
             f"To'langan: {payment_summary['paid_amount']:,.0f} so'm\n"
             f"Qolgan: {payment_summary['remaining_amount']:,.0f} so'm"
         )
@@ -81,6 +79,33 @@ def format_active_products_for_exit(products: list[dict]) -> str:
         )
 
     lines.append("\nChiqariladigan mahsulot ID sini kiriting:")
+    return "\n\n---\n\n".join(lines)
+
+
+def format_active_products_for_payment(
+    products: list[dict], payment_summaries: dict[int, dict]
+) -> str:
+    if not products:
+        return "Bu mijozda omborda aktiv mahsulot yo'q."
+
+    lines = ["💳 <b>To'lov uchun mahsulotlar:</b>\n"]
+    for p in products:
+        pid = p["id"]
+        summary = payment_summaries.get(pid, {})
+        paid = summary.get("paid_amount", 0)
+        rem = summary.get("remaining_amount", p["total_price"])
+
+        lines.append(
+            f"<b>ID:</b> {pid}\n"
+            f"<b>Mahsulot:</b> {p['product_name']}\n"
+            f"<b>Kg:</b> {p['kg_amount']}\n"
+            f"<b>Quti:</b> {p.get('box_count', 0)}\n"
+            f"<b>Umumiy:</b> {p['total_price']:,.0f} so'm\n"
+            f"<b>To'langan:</b> {paid:,.0f} so'm\n"
+            f"<b>Qolgan:</b> {rem:,.0f} so'm"
+        )
+
+    lines.append("\nTo'lov qilinadigan mahsulot ID sini kiriting:")
     return "\n\n---\n\n".join(lines)
 
 

@@ -1,13 +1,14 @@
 /**
  * Ombor Bot — Google Sheets Apps Script Web App
  *
- * 2 ta sheet: Ombor + To'lovlar tarixi
- * 4 ta action: append_product, update_exit, append_payment_history, update_payments
+ * 3 ta sheet: Ombor + Chiqarilganlar + To'lovlar tarixi
+ * 4 ta action: append_product, update_product_payment, move_product_to_exited, append_payment_history
  */
 
 const SECRET = "CHANGE_ME_SECRET";
 
 const MAIN_SHEET_NAME = "Ombor";
+const EXITED_SHEET_NAME = "Chiqarilganlar";
 const PAYMENT_HISTORY_SHEET_NAME = "To'lovlar tarixi";
 
 const MAIN_HEADERS = [
@@ -24,17 +25,34 @@ const MAIN_HEADERS = [
   "Qolgan summa",
   "Status",
   "Yaratilgan sana",
+  "Yangilangan sana"
+];
+
+const EXITED_HEADERS = [
+  "Product ID",
+  "Telegram ID",
+  "Telefon raqam",
+  "Ism",
+  "Mahsulot nomi",
+  "Kg miqdori",
+  "Qutilar soni",
+  "1 kg narxi",
+  "Umumiy summa",
+  "To'langan summa",
+  "Qolgan summa",
+  "Status",
+  "Yaratilgan sana",
   "Chiqim sanasi",
-  "Izoh"
+  "Yangilangan sana"
 ];
 
 const PAYMENT_HISTORY_HEADERS = [
   "Payment ID",
+  "Product ID",
   "Telegram ID",
   "Telefon raqam",
   "Ism",
   "To'lov summasi",
-  "Izoh",
   "Admin Telegram ID",
   "Yaratilgan sana"
 ];
@@ -86,25 +104,43 @@ function appendProduct_(row) {
   sheet.appendRow(normalized);
 }
 
-function updateExit_(data) {
+function updateProductPayment_(data) {
   const sheet = getOrCreateSheet_(MAIN_SHEET_NAME, MAIN_HEADERS);
   const row = findRowByProductId_(sheet, data.product_id);
+  if (!row) {
+    return { updated: false };
+  }
+  sheet.getRange(row, 10).setValue(data.paid_amount);
+  sheet.getRange(row, 11).setValue(data.remaining_amount);
+  sheet.getRange(row, 14).setValue(data.updated_at || "");
+  return { updated: true };
+}
+
+function moveProductToExited_(data) {
+  const mainSheet = getOrCreateSheet_(MAIN_SHEET_NAME, MAIN_HEADERS);
+  const exitedSheet = getOrCreateSheet_(EXITED_SHEET_NAME, EXITED_HEADERS);
+
+  const row = findRowByProductId_(mainSheet, data.product_id);
   if (row) {
-    sheet.getRange(row, 12).setValue(data.status || "exited");
-    sheet.getRange(row, 14).setValue(data.exited_at || "");
-    sheet.getRange(row, 15).setValue(data.note || "");
-    return { updated: true, appended: false };
+    const rowValues = mainSheet.getRange(row, 1, 1, MAIN_HEADERS.length).getValues()[0];
+    const exitedRow = rowValues.map(val => val === undefined || val === null ? "" : val);
+    exitedRow[11] = "exited";
+    exitedRow[13] = data.row ? data.row[13] || "" : "";
+    exitedRow[14] = new Date().toISOString();
+    exitedSheet.appendRow(exitedRow);
+    mainSheet.deleteRow(row);
+    return { ok: true, moved: true };
   }
 
   if (data.row && Array.isArray(data.row)) {
-    const normalized = MAIN_HEADERS.map((_, index) => {
+    const normalized = EXITED_HEADERS.map((_, index) => {
       return data.row[index] === undefined || data.row[index] === null ? "" : data.row[index];
     });
-    sheet.appendRow(normalized);
-    return { updated: false, appended: true };
+    exitedSheet.appendRow(normalized);
+    return { ok: true, appended: true };
   }
 
-  return { updated: false, appended: false };
+  return { ok: true, moved: false };
 }
 
 function appendPaymentHistory_(row) {
@@ -113,19 +149,6 @@ function appendPaymentHistory_(row) {
     return row[index] === undefined || row[index] === null ? "" : row[index];
   });
   sheet.appendRow(normalized);
-}
-
-function updatePayments_(updates) {
-  const sheet = getOrCreateSheet_(MAIN_SHEET_NAME, MAIN_HEADERS);
-  for (let i = 0; i < updates.length; i++) {
-    const u = updates[i];
-    const row = findRowByProductId_(sheet, u.product_id);
-    if (row) {
-      sheet.getRange(row, 10).setValue(u.paid_amount);
-      sheet.getRange(row, 11).setValue(u.remaining_amount);
-    }
-  }
-  return true;
 }
 
 function doGet(e) {
@@ -149,18 +172,18 @@ function doPost(e) {
       return jsonOutput({ ok: true });
     }
 
-    if (payload.action === "update_exit") {
-      const result = updateExit_(payload.data);
+    if (payload.action === "update_product_payment") {
+      const result = updateProductPayment_(payload.data);
       return jsonOutput({ ok: true, ...result });
+    }
+
+    if (payload.action === "move_product_to_exited") {
+      const result = moveProductToExited_(payload.data);
+      return jsonOutput(result);
     }
 
     if (payload.action === "append_payment_history") {
       appendPaymentHistory_(payload.data);
-      return jsonOutput({ ok: true });
-    }
-
-    if (payload.action === "update_payments") {
-      updatePayments_(payload.data);
       return jsonOutput({ ok: true });
     }
 

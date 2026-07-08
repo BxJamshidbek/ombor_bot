@@ -15,20 +15,23 @@ from app.database import (
     get_admin_stats,
     get_all_clients,
     get_payment_by_id,
-    get_payments_by_client_id,
     get_product_by_id,
-    get_products_by_client_id_asc,
+    get_product_payment_summary,
     get_user_by_phone,
 )
-from app.services.calculation_service import allocate_payments_to_products
+from app.services.calculation_service import (
+    calculate_total_price,
+    calculate_remaining_amount,
+    validate_payment_amount,
+)
 from app.services.formatting_service import (
     format_active_products_for_exit,
+    format_active_products_for_payment,
     format_admin_stats,
     format_client_list,
 )
 from app.keyboards import admin_panel_kb, cancel_kb, confirmation_kb
-from app.services.calculation_service import calculate_total_price
-from app.services.sheets_service import sheets_service, payment_updates_to_payload
+from app.services.sheets_service import sheets_service
 from app.states import AdminAddProduct, AdminExitProduct, AdminAddPayment
 from app.utils.validators import (
     normalize_phone,
@@ -236,8 +239,6 @@ async def add_product_confirm(message: Message, state: FSMContext):
     if text == "Ha ✅":
         try:
             data = await state.get_data()
-            logger.info("Product confirm started: client_id=%s product_name=%s",
-                        data.get("client_id"), data.get("product_name"))
             product_id = await create_product(
                 client_id=data["client_id"],
                 telegram_id=data["telegram_id"],
@@ -249,7 +250,6 @@ async def add_product_confirm(message: Message, state: FSMContext):
                 box_count=data["box_count"],
                 total_price=data["total_price"],
             )
-            logger.info("Product created id=%s", product_id)
 
             product_data = {
                 **data,
@@ -435,48 +435,43 @@ async def exit_product_select(message: Message, state: FSMContext):
         )
         return
 
+    summary = await get_product_payment_summary(product_id)
+    paid = summary["paid_amount"]
+    rem = summary["remaining_amount"]
+
     await state.update_data(
         selected_product_id=product["id"],
         selected_product_name=product["product_name"],
         selected_kg=product["kg_amount"],
+        selected_box_count=product.get("box_count", 0),
         selected_price=product["price_per_kg"],
         selected_total=product["total_price"],
+        selected_paid=paid,
+        selected_remaining=rem,
     )
 
-    await state.set_state(AdminExitProduct.waiting_for_note)
-    await message.answer(
-        "Izoh kiriting yoki izohsiz davom etish uchun '-' yuboring:",
-        reply_markup=cancel_kb(),
-    )
+    debt_warning = ""
+    if rem > 0:
+        debt_warning = f"\n\n⚠️ <b>Diqqat:</b> bu mahsulot bo'yicha qolgan qarz bor: {rem:,.0f} so'm"
 
-
-@router.message(AdminExitProduct.waiting_for_note, F.text)
-async def exit_product_note(message: Message, state: FSMContext):
-    text = message.text.strip()
-
-    if text == "❌ Bekor qilish":
-        await cancel_flow(message, state)
-        return
-
-    note = None if text == "-" else text
-    data = await state.get_data()
-    await state.update_data(note=note)
-
-    product_name = data["selected_product_name"]
-    summary = (
+    summary_text = (
         f"📤 <b>Chiqim tasdiqlash</b>\n\n"
         f"<b>Mijoz:</b> {data['client_name'] or 'Ismsiz'}\n"
         f"<b>Telefon:</b> {data['client_phone']}\n"
         f"───────────────\n"
-        f"<b>Mahsulot:</b> {product_name}\n"
-        f"<b>Kg:</b> {data['selected_kg']}\n"
-        f"<b>Umumiy summa:</b> {data['selected_total']:,.0f} so'm\n"
-        f"<b>Izoh:</b> {note or '—'}\n\n"
+        f"<b>Product ID:</b> {product['id']}\n"
+        f"<b>Mahsulot:</b> {product['product_name']}\n"
+        f"<b>Kg:</b> {product['kg_amount']}\n"
+        f"<b>Qutilar soni:</b> {product.get('box_count', 0)}\n"
+        f"<b>Umumiy summa:</b> {product['total_price']:,.0f} so'm\n"
+        f"<b>To'langan:</b> {paid:,.0f} so'm\n"
+        f"<b>Qolgan:</b> {rem:,.0f} so'm"
+        f"{debt_warning}\n\n"
         f"Chiqim qilinsinmi?"
     )
 
     await state.set_state(AdminExitProduct.waiting_for_confirmation)
-    await message.answer(summary, reply_markup=confirmation_kb())
+    await message.answer(summary_text, reply_markup=confirmation_kb())
 
 
 @router.message(AdminExitProduct.waiting_for_confirmation, F.text)
@@ -493,7 +488,6 @@ async def exit_product_confirm(message: Message, state: FSMContext):
             exit_data = await exit_product(
                 product_id=data["selected_product_id"],
                 admin_id=message.from_user.id,
-                note=data.get("note"),
             )
 
             if exit_data is None:
@@ -505,9 +499,13 @@ async def exit_product_confirm(message: Message, state: FSMContext):
                 sheets_ok = False
                 if sheets_service.is_configured():
                     try:
-                        sheets_ok = await sheets_service.update_exit_row(exit_data)
+                        sheets_ok = await sheets_service.move_product_to_exited(
+                            exit_data,
+                            paid_amount=data.get("selected_paid", 0),
+                            remaining_amount=data.get("selected_remaining", 0),
+                        )
                     except Exception:
-                        logger.exception("Sheets update exit crashed")
+                        logger.exception("Sheets move to exited crashed")
                         sheets_ok = False
 
                 if sheets_ok:
@@ -587,17 +585,99 @@ async def payment_client_phone(message: Message, state: FSMContext):
         )
         return
 
+    products = await get_active_products_for_client(user["id"])
+    if not products:
+        await message.answer(
+            "Bu mijozda omborda aktiv mahsulot yo'q.",
+            reply_markup=admin_panel_kb(),
+        )
+        await state.clear()
+        return
+
+    payment_summaries = {}
+    for p in products:
+        payment_summaries[p["id"]] = await get_product_payment_summary(p["id"])
+
     await state.update_data(
         client_id=user["id"],
         telegram_id=user["telegram_id"],
         phone=user["phone"],
         client_name=user["full_name"],
+        products=products,
+        payment_summaries=payment_summaries,
     )
+
+    await state.set_state(AdminAddPayment.waiting_for_product_id)
+    await message.answer(
+        format_active_products_for_payment(products, payment_summaries),
+        reply_markup=cancel_kb(),
+    )
+
+
+@router.message(AdminAddPayment.waiting_for_product_id, F.text)
+async def payment_product_select(message: Message, state: FSMContext):
+    text = message.text.strip()
+
+    if text == "❌ Bekor qilish":
+        await cancel_flow(message, state)
+        return
+
+    data = await state.get_data()
+    try:
+        product_id = int(text)
+    except ValueError:
+        await message.answer(
+            "Noto'g'ri ID. Mahsulot ID sini raqam ko'rinishida kiriting:",
+            reply_markup=cancel_kb(),
+        )
+        return
+
+    product = await get_product_by_id(product_id)
+    if product is None:
+        await message.answer(
+            "Bu ID bilan mahsulot topilmadi. Qaytadan kiriting:",
+            reply_markup=cancel_kb(),
+        )
+        return
+
+    if product["status"] != "active":
+        await message.answer(
+            "Bu mahsulot allaqachon chiqim qilingan yoki faol emas. Boshqa ID kiriting:",
+            reply_markup=cancel_kb(),
+        )
+        return
+
+    if product["phone"] != data["client_phone"]:
+        await message.answer(
+            "Bu mahsulot ushbu mijozga tegishli emas. Boshqa ID kiriting:",
+            reply_markup=cancel_kb(),
+        )
+        return
+
+    summary = await get_product_payment_summary(product_id)
+    paid = summary["paid_amount"]
+    rem = summary["remaining_amount"]
+
+    if rem <= 0:
+        await message.answer(
+            "Bu mahsulot uchun to'lov to'liq qilingan.",
+            reply_markup=cancel_kb(),
+        )
+        return
+
+    await state.update_data(
+        selected_product_id=product["id"],
+        selected_product_name=product["product_name"],
+        selected_total=product["total_price"],
+        selected_paid=paid,
+        selected_remaining=rem,
+    )
+
     await state.set_state(AdminAddPayment.waiting_for_amount)
     await message.answer(
-        f"✅ Mijoz topildi: {user['full_name'] or 'Ismsiz'} "
-        f"({user['phone']})\n\n"
-        "To'lov summasini so'mda kiriting:\n\nMasalan: 500000",
+        f"Bu mahsulot bo'yicha qolgan summa: <b>{rem:,.0f} so'm</b>\n\n"
+        f"To'lov summasini kiriting:\n\n"
+        f"Masalan: {rem:,.0f}",
         reply_markup=cancel_kb(),
     )
 
@@ -611,44 +691,43 @@ async def payment_amount(message: Message, state: FSMContext):
         return
 
     amount = validate_quantity(text)
-    if amount is None or amount <= 0:
+    if amount is None:
         await message.answer(
-            "Noto'g'ri summa. Faqat musbat son kiriting.\n\nMasalan: 500000",
+            "Noto'g'ri summa. Faqat musbat son kiriting.",
             reply_markup=cancel_kb(),
         )
         return
 
-    await state.update_data(amount=amount)
-    await state.set_state(AdminAddPayment.waiting_for_note)
-    await message.answer(
-        "Izoh kiriting yoki izohsiz davom etish uchun '-' yuboring:",
-        reply_markup=cancel_kb(),
-    )
+    data = await state.get_data()
+    remaining = data.get("selected_remaining", 0)
 
-
-@router.message(AdminAddPayment.waiting_for_note, F.text)
-async def payment_note(message: Message, state: FSMContext):
-    text = message.text.strip()
-
-    if text == "❌ Bekor qilish":
-        await cancel_flow(message, state)
+    valid, error_msg = validate_payment_amount(amount, remaining)
+    if not valid:
+        await message.answer(error_msg, reply_markup=cancel_kb())
         return
 
-    note = None if text == "-" else text
-    data = await state.update_data(note=note)
+    new_remaining = calculate_remaining_amount(data["selected_total"], data["selected_paid"] + amount)
 
-    summary = (
+    await state.update_data(amount=amount, new_remaining=new_remaining)
+
+    summary_text = (
         f"💳 <b>To'lov tasdiqlash</b>\n\n"
         f"<b>Mijoz:</b> {data['client_name'] or 'Ismsiz'}\n"
         f"<b>Telefon:</b> {data['phone']}\n"
         f"───────────────\n"
-        f"<b>To'lov summasi:</b> {data['amount']:,.0f} so'm\n"
-        f"<b>Izoh:</b> {data['note'] or '—'}\n\n"
+        f"<b>Product ID:</b> {data['selected_product_id']}\n"
+        f"<b>Mahsulot:</b> {data['selected_product_name']}\n"
+        f"<b>Umumiy summa:</b> {data['selected_total']:,.0f} so'm\n"
+        f"<b>Oldin to'langan:</b> {data['selected_paid']:,.0f} so'm\n"
+        f"<b>Qolgan:</b> {data['selected_remaining']:,.0f} so'm\n"
+        f"───────────────\n"
+        f"<b>To'lov summasi:</b> {amount:,.0f} so'm\n"
+        f"<b>To'lovdan keyin qolgan:</b> {new_remaining:,.0f} so'm\n\n"
         f"To'lov bazaga saqlansinmi?"
     )
 
     await state.set_state(AdminAddPayment.waiting_for_confirmation)
-    await message.answer(summary, reply_markup=confirmation_kb())
+    await message.answer(summary_text, reply_markup=confirmation_kb())
 
 
 @router.message(AdminAddPayment.waiting_for_confirmation, F.text)
@@ -664,12 +743,12 @@ async def payment_confirm(message: Message, state: FSMContext):
             data = await state.get_data()
             payment = await create_payment(
                 client_id=data["client_id"],
+                product_id=data["selected_product_id"],
                 telegram_id=data["telegram_id"],
                 phone=data["phone"],
                 client_name=data["client_name"],
                 amount=data["amount"],
                 created_by_admin_id=message.from_user.id,
-                note=data.get("note"),
             )
 
             if payment is None:
@@ -678,16 +757,18 @@ async def payment_confirm(message: Message, state: FSMContext):
                     reply_markup=admin_panel_kb(),
                 )
             else:
+                summary = await get_product_payment_summary(data["selected_product_id"])
+
                 sheets_ok = False
                 if sheets_service.is_configured():
                     try:
                         sheets_ok = await sheets_service.append_payment_history(payment)
                         if sheets_ok:
-                            products = await get_products_by_client_id_asc(data["client_id"])
-                            payments = await get_payments_by_client_id(data["client_id"])
-                            allocation = allocate_payments_to_products(products, payments)
-                            updates = payment_updates_to_payload(allocation)
-                            await sheets_service.update_payment_rows(updates)
+                            await sheets_service.update_product_payment(
+                                data["selected_product_id"],
+                                summary["paid_amount"],
+                                summary["remaining_amount"],
+                            )
                     except Exception:
                         logger.exception("Sheets payment crashed")
                         sheets_ok = False

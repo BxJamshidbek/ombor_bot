@@ -1,6 +1,8 @@
 from app.services.calculation_service import (
     allocate_payments_to_products,
+    calculate_remaining_amount,
     calculate_total_price,
+    validate_payment_amount,
 )
 
 
@@ -9,6 +11,44 @@ def test_calculate_total_price():
     assert calculate_total_price(0, 1000) == 0
     assert calculate_total_price(10, 0) == 0
     assert calculate_total_price(1.5, 3000) == 4500
+
+
+def test_calculate_remaining_amount():
+    assert calculate_remaining_amount(10000, 3000) == 7000
+    assert calculate_remaining_amount(10000, 10000) == 0
+    assert calculate_remaining_amount(10000, 15000) == 0
+    assert calculate_remaining_amount(0, 0) == 0
+
+
+def test_validate_payment_amount_valid():
+    valid, err = validate_payment_amount(5000, 10000)
+    assert valid is True
+    assert err is None
+
+
+def test_validate_payment_amount_exact():
+    valid, err = validate_payment_amount(10000, 10000)
+    assert valid is True
+    assert err is None
+
+
+def test_validate_payment_amount_overpay():
+    valid, err = validate_payment_amount(15000, 10000)
+    assert valid is False
+    assert "Ortiqcha to'lov" in err
+    assert "10,000" in err
+
+
+def test_validate_payment_amount_zero():
+    valid, err = validate_payment_amount(0, 10000)
+    assert valid is False
+    assert "musbat" in err
+
+
+def test_validate_payment_amount_negative():
+    valid, err = validate_payment_amount(-5000, 10000)
+    assert valid is False
+    assert "musbat" in err
 
 
 def test_allocate_payments_basic():
