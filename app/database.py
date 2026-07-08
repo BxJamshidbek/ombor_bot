@@ -410,6 +410,32 @@ async def exit_product(product_id: int, admin_id: int, note: str | None = None) 
         await conn.close()
 
 
+async def get_products_by_client_id_asc(client_id: int) -> list[dict]:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT * FROM products WHERE client_id = ? ORDER BY created_at ASC",
+            (client_id,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        await conn.close()
+
+
+async def get_payments_by_client_id(client_id: int) -> list[dict]:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT * FROM payments WHERE client_id = ? ORDER BY created_at ASC",
+            (client_id,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        await conn.close()
+
+
 async def get_payment_by_id(payment_id: int) -> dict | None:
     conn = await get_connection()
     try:

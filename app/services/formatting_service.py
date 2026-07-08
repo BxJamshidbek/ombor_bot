@@ -1,5 +1,6 @@
 def format_product_list(products: list[dict], limit: int = 10,
-                        payment_summary: dict | None = None) -> str:
+                        payment_summary: dict | None = None,
+                        allocation: dict | None = None) -> str:
     if not products:
         return "Sizda hozircha mahsulot mavjud emas."
 
@@ -7,20 +8,27 @@ def format_product_list(products: list[dict], limit: int = 10,
     shown = products[:limit]
 
     for i, p in enumerate(shown, 1):
+        pid = p.get("id")
+        alloc = (allocation or {}).get(pid, {}) if pid else {}
+        paid = alloc.get("paid_amount", 0)
+        rem = alloc.get("remaining_amount", p.get("total_price", 0))
+        status = p.get("status", "active")
+
         lines.append(
             f"{i}. <b>{p['product_name']}</b>\n"
             f"   Kg: {p['kg_amount']}\n"
             f"   Quti: {p.get('box_count', 0)}\n"
             f"   1 kg narxi: {p['price_per_kg']:,.0f} so'm\n"
             f"   Umumiy summa: {p['total_price']:,.0f} so'm\n"
-            f"   Status: {p['status']}\n"
+            f"   To'langan: {paid:,.0f} so'm\n"
+            f"   Qolgan: {rem:,.0f} so'm\n"
+            f"   Status: {status}\n"
             f"   Sana: {p['created_at'][:10]}"
         )
 
     remaining = len(products) - limit
     if remaining > 0:
-        lines.append(f"\nYana {remaining} ta mahsulot bor. "
-                     f"To'liq hisobot keyingi bosqichda qo'shiladi.")
+        lines.append(f"\nYana {remaining} ta mahsulot bor.")
 
     if payment_summary is not None:
         lines.append(

@@ -1,7 +1,14 @@
 from aiogram import Router, F
 from aiogram.types import Message
 
-from app.database import get_client_payment_summary, get_products_by_client_id, get_user_by_telegram_id
+from app.database import (
+    get_client_payment_summary,
+    get_payments_by_client_id,
+    get_products_by_client_id,
+    get_products_by_client_id_asc,
+    get_user_by_telegram_id,
+)
+from app.services.calculation_service import allocate_payments_to_products
 from app.keyboards import main_menu_kb
 from app.services.formatting_service import format_product_list
 
@@ -15,9 +22,11 @@ async def my_products(message: Message):
         await message.answer("Avval /start orqali ro'yxatdan o'ting.")
         return
 
-    products = await get_products_by_client_id(user["id"])
+    products = await get_products_by_client_id_asc(user["id"])
+    payments = await get_payments_by_client_id(user["id"])
+    allocation = allocate_payments_to_products(products, payments)
     summary = await get_client_payment_summary(user["id"])
-    text = format_product_list(products, payment_summary=summary)
+    text = format_product_list(products, payment_summary=summary, allocation=allocation)
     await message.answer(text, reply_markup=main_menu_kb(user["role"]))
 
 

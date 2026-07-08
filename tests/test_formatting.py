@@ -90,8 +90,14 @@ def test_formatting_without_payment_summary():
     products = [make_product("Olma", total=50000)]
     result = format_product_list(products)
     assert "Jami to'lov" not in result
-    assert "To'langan" not in result
-    assert "Qolgan" not in result
+
+
+def test_formatting_with_allocation():
+    products = [make_product("Olma", total=40000, _id=1)]
+    allocation = {1: {"paid_amount": 15000, "remaining_amount": 25000}}
+    result = format_product_list(products, allocation=allocation)
+    assert "To'langan: 15,000" in result
+    assert "Qolgan: 25,000" in result
 
 
 def make_client(name: str = "Ali Valiyev", phone: str = "+998901234567",

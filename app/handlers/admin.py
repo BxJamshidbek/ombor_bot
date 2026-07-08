@@ -14,9 +14,13 @@ from app.database import (
     get_active_products_for_client,
     get_admin_stats,
     get_all_clients,
+    get_payment_by_id,
+    get_payments_by_client_id,
     get_product_by_id,
+    get_products_by_client_id_asc,
     get_user_by_phone,
 )
+from app.services.calculation_service import allocate_payments_to_products
 from app.services.formatting_service import (
     format_active_products_for_exit,
     format_admin_stats,
@@ -24,7 +28,7 @@ from app.services.formatting_service import (
 )
 from app.keyboards import admin_panel_kb, cancel_kb, confirmation_kb
 from app.services.calculation_service import calculate_total_price
-from app.services.sheets_service import sheets_service
+from app.services.sheets_service import sheets_service, payment_updates_to_payload
 from app.states import AdminAddProduct, AdminExitProduct, AdminAddPayment
 from app.utils.validators import (
     normalize_phone,
@@ -259,7 +263,7 @@ async def add_product_confirm(message: Message, state: FSMContext):
                 try:
                     sheets_ok = await sheets_service.append_product_row(product_data)
                 except Exception:
-                    logger.exception("Sheets append crashed")
+                    logger.exception("Sheets append product crashed")
                     sheets_ok = False
 
             if sheets_ok:
@@ -501,9 +505,9 @@ async def exit_product_confirm(message: Message, state: FSMContext):
                 sheets_ok = False
                 if sheets_service.is_configured():
                     try:
-                        sheets_ok = await sheets_service.append_exit_row(exit_data)
+                        sheets_ok = await sheets_service.update_exit_row(exit_data)
                     except Exception:
-                        logger.exception("Sheets append exit crashed")
+                        logger.exception("Sheets update exit crashed")
                         sheets_ok = False
 
                 if sheets_ok:
@@ -677,9 +681,15 @@ async def payment_confirm(message: Message, state: FSMContext):
                 sheets_ok = False
                 if sheets_service.is_configured():
                     try:
-                        sheets_ok = await sheets_service.append_payment_row(payment)
+                        sheets_ok = await sheets_service.append_payment_history(payment)
+                        if sheets_ok:
+                            products = await get_products_by_client_id_asc(data["client_id"])
+                            payments = await get_payments_by_client_id(data["client_id"])
+                            allocation = allocate_payments_to_products(products, payments)
+                            updates = payment_updates_to_payload(allocation)
+                            await sheets_service.update_payment_rows(updates)
                     except Exception:
-                        logger.exception("Sheets append payment crashed")
+                        logger.exception("Sheets payment crashed")
                         sheets_ok = False
 
                 if sheets_ok:

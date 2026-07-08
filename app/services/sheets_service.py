@@ -10,24 +10,10 @@ from app.config import config
 
 logger = logging.getLogger(__name__)
 
-KIRIM_SHEET_NAME = "Kirim"
-CHIQIM_SHEET_NAME = "Chiqim"
-PAYMENT_SHEET_NAME = "To'lovlar"
+MAIN_SHEET_NAME = "Ombor"
+PAYMENT_HISTORY_SHEET_NAME = "To'lovlar tarixi"
 
-KIRIM_HEADERS = [
-    "Telegram ID",
-    "Telefon raqam",
-    "Ism",
-    "Mahsulot nomi",
-    "Kg miqdori",
-    "Qutilar soni",
-    "1 kg narxi",
-    "Umumiy summa",
-    "Status",
-    "Yaratilgan sana",
-]
-
-CHIQIM_HEADERS = [
+MAIN_HEADERS = [
     "Product ID",
     "Telegram ID",
     "Telefon raqam",
@@ -37,12 +23,15 @@ CHIQIM_HEADERS = [
     "Qutilar soni",
     "1 kg narxi",
     "Umumiy summa",
+    "To'langan summa",
+    "Qolgan summa",
+    "Status",
+    "Yaratilgan sana",
     "Chiqim sanasi",
-    "Admin Telegram ID",
     "Izoh",
 ]
 
-PAYMENT_HEADERS = [
+PAYMENT_HISTORY_HEADERS = [
     "Payment ID",
     "Telegram ID",
     "Telefon raqam",
@@ -54,8 +43,14 @@ PAYMENT_HEADERS = [
 ]
 
 
-def product_to_sheet_row(product: dict[str, Any]) -> list[str | int | float]:
+def product_to_main_sheet_row(
+    product: dict[str, Any],
+    paid_amount: float = 0,
+    remaining_amount: float | None = None,
+) -> list[str | int | float]:
+    total = product.get("total_price", 0)
     return [
+        product.get("id", ""),
         product.get("telegram_id", ""),
         product.get("phone", ""),
         product.get("client_name", ""),
@@ -63,30 +58,17 @@ def product_to_sheet_row(product: dict[str, Any]) -> list[str | int | float]:
         product.get("kg_amount", 0),
         product.get("box_count", 0),
         product.get("price_per_kg", 0),
-        product.get("total_price", 0),
+        total,
+        paid_amount,
+        remaining_amount if remaining_amount is not None else total,
         product.get("status", "active"),
         product.get("created_at", datetime.now(timezone.utc).isoformat()),
+        "",
+        "",
     ]
 
 
-def exit_to_sheet_row(exit_data: dict[str, Any]) -> list[str | int | float]:
-    return [
-        exit_data.get("product_id", ""),
-        exit_data.get("telegram_id", ""),
-        exit_data.get("phone", ""),
-        exit_data.get("client_name", ""),
-        exit_data.get("product_name", ""),
-        exit_data.get("kg_amount", 0),
-        exit_data.get("box_count", 0),
-        exit_data.get("price_per_kg", 0),
-        exit_data.get("total_price", 0),
-        exit_data.get("exited_at", datetime.now(timezone.utc).isoformat()),
-        exit_data.get("created_by_admin_id", ""),
-        exit_data.get("note", "") or "",
-    ]
-
-
-def payment_to_sheet_row(payment: dict[str, Any]) -> list[str | int | float]:
+def payment_to_history_row(payment: dict[str, Any]) -> list[str | int | float]:
     return [
         payment.get("id", ""),
         payment.get("telegram_id", ""),
@@ -99,12 +81,24 @@ def payment_to_sheet_row(payment: dict[str, Any]) -> list[str | int | float]:
     ]
 
 
+def payment_updates_to_payload(
+    allocation: dict[int, dict],
+) -> list[dict]:
+    updates = []
+    for pid, alloc in allocation.items():
+        updates.append({
+            "product_id": pid,
+            "paid_amount": alloc["paid_amount"],
+            "remaining_amount": alloc["remaining_amount"],
+        })
+    return updates
+
+
 class SheetsService:
     def __init__(self):
         self.sheets_id: str = config.google_sheets_id
         self._client = None
-        self._kirim_worksheet = None
-        self._chiqim_worksheet = None
+        self._main_worksheet = None
         self._payment_worksheet = None
         self._ready = False
         self._script_mode = False
@@ -124,7 +118,7 @@ class SheetsService:
             self._ready = True
             webapp_url = config.google_script_webapp_url.rstrip("/")
             try:
-                resp = await asyncio.to_thread(requests.get, webapp_url, timeout=15)
+                resp = await asyncio.to_thread(requests.get, webapp_url, timeout=5)
                 if resp.status_code == 200 and resp.json().get("ok"):
                     logger.info("Google Sheets (Apps Script) ready at %s", webapp_url)
                 else:
@@ -157,9 +151,8 @@ class SheetsService:
                 logger.warning("Google Sheet not found by ID: %s", self.sheets_id)
                 return
 
-            for name, attr in [(KIRIM_SHEET_NAME, "_kirim_worksheet"),
-                               (CHIQIM_SHEET_NAME, "_chiqim_worksheet"),
-                               (PAYMENT_SHEET_NAME, "_payment_worksheet")]:
+            for name, attr in [(MAIN_SHEET_NAME, "_main_worksheet"),
+                               (PAYMENT_HISTORY_SHEET_NAME, "_payment_worksheet")]:
                 try:
                     ws = sh.worksheet(name)
                 except gspread.WorksheetNotFound:
@@ -168,16 +161,15 @@ class SheetsService:
 
             self._ready = True
             await self._ensure_headers()
-            logger.info("Google Sheets ready (sheets: %s, %s, %s)",
-                        KIRIM_SHEET_NAME, CHIQIM_SHEET_NAME, PAYMENT_SHEET_NAME)
+            logger.info("Google Sheets ready (sheets: %s, %s)",
+                        MAIN_SHEET_NAME, PAYMENT_HISTORY_SHEET_NAME)
         except Exception as e:
             self._ready = False
             logger.warning("Google Sheets init failed: %s", e)
 
     async def _ensure_headers(self):
-        for ws, headers in [(self._kirim_worksheet, KIRIM_HEADERS),
-                            (self._chiqim_worksheet, CHIQIM_HEADERS),
-                            (self._payment_worksheet, PAYMENT_HEADERS)]:
+        for ws, headers in [(self._main_worksheet, MAIN_HEADERS),
+                            (self._payment_worksheet, PAYMENT_HISTORY_HEADERS)]:
             if not ws:
                 continue
             existing = ws.row_values(1)
@@ -194,7 +186,7 @@ class SheetsService:
             "action": action,
             "data": row,
         }
-        logger.info("Apps Script POST: action=%s url=%s", action, webapp_url)
+        logger.info("Apps Script POST: action=%s", action)
         try:
             resp = await asyncio.to_thread(
                 requests.post, webapp_url, json=payload, timeout=5
@@ -206,12 +198,43 @@ class SheetsService:
             try:
                 result = resp.json()
             except ValueError:
-                logger.warning("Apps Script non-JSON response: %s", resp.text[:300])
+                logger.warning("Apps Script non-JSON: %s", resp.text[:300])
                 return False
             logger.info("Apps Script result: %s", result)
             if result.get("ok"):
                 return True
-            logger.warning("Apps Script append failed: %s", result)
+            logger.warning("Apps Script failed: %s", result)
+            return False
+        except Exception as e:
+            logger.exception("Apps Script request error: %s", e)
+            return False
+
+    async def _update_via_script(self, action: str, data: dict) -> bool:
+        if not self._ready:
+            return False
+        webapp_url = config.google_script_webapp_url.rstrip("/")
+        payload = {
+            "secret": config.google_script_secret,
+            "action": action,
+            "data": data,
+        }
+        logger.info("Apps Script POST: action=%s", action)
+        try:
+            resp = await asyncio.to_thread(
+                requests.post, webapp_url, json=payload, timeout=5
+            )
+            logger.info("Apps Script response: status=%s", resp.status_code)
+            if resp.status_code != 200:
+                logger.warning("Apps Script HTTP %s: %s", resp.status_code, resp.text[:200])
+                return False
+            try:
+                result = resp.json()
+            except ValueError:
+                logger.warning("Apps Script non-JSON: %s", resp.text[:300])
+                return False
+            if result.get("ok"):
+                return True
+            logger.warning("Apps Script failed: %s", result)
             return False
         except Exception as e:
             logger.exception("Apps Script request error: %s", e)
@@ -219,59 +242,72 @@ class SheetsService:
 
     async def append_product_row(self, product: dict[str, Any]) -> bool:
         if self._script_mode:
-            row = product_to_sheet_row(product)
-            logger.info("Appending product to Kirim: %s", row[:4])
-            return await self._append_via_script("append_kirim", row)
-        if not self._ready or not self._kirim_worksheet:
+            row = product_to_main_sheet_row(product)
+            return await self._append_via_script("append_product", row)
+        if not self._ready or not self._main_worksheet:
             return False
         try:
-            row = product_to_sheet_row(product)
-            self._kirim_worksheet.append_row(row, value_input_option="USER_ENTERED")
+            row = product_to_main_sheet_row(product)
+            self._main_worksheet.append_row(row, value_input_option="USER_ENTERED")
             return True
         except Exception as e:
-            logger.warning("Sheets append (Kirim) failed: %s", e)
+            logger.warning("Sheets append product failed: %s", e)
             return False
 
-    async def append_exit_row(self, exit_data: dict[str, Any]) -> bool:
+    async def update_exit_row(self, exit_data: dict[str, Any]) -> bool:
+        data = {
+            "product_id": exit_data.get("product_id"),
+            "status": "exited",
+            "exited_at": exit_data.get("exited_at", ""),
+            "note": exit_data.get("note", "") or "",
+        }
         if self._script_mode:
-            row = exit_to_sheet_row(exit_data)
-            logger.info("Appending exit to Chiqim: product_id=%s", exit_data.get("product_id"))
-            return await self._append_via_script("append_chiqim", row)
-        if not self._ready or not self._chiqim_worksheet:
+            return await self._update_via_script("update_exit", data)
+        if not self._ready or not self._main_worksheet:
             return False
         try:
-            row = exit_to_sheet_row(exit_data)
-            self._chiqim_worksheet.append_row(row, value_input_option="USER_ENTERED")
-            return True
+            product_id = str(data["product_id"])
+            cell = self._main_worksheet.find(product_id, in_column=1)
+            if cell:
+                self._main_worksheet.update_cell(cell.row, 12, "exited")
+                self._main_worksheet.update_cell(cell.row, 14, data["exited_at"])
+                self._main_worksheet.update_cell(cell.row, 15, data["note"])
+                return True
+            logger.warning("Product ID %s not found in Ombor sheet", product_id)
+            return False
         except Exception as e:
-            logger.warning("Sheets append (Chiqim) failed: %s", e)
+            logger.warning("Sheets update exit failed: %s", e)
             return False
 
-    async def append_payment_row(self, payment: dict[str, Any]) -> bool:
+    async def append_payment_history(self, payment: dict[str, Any]) -> bool:
         if self._script_mode:
-            row = payment_to_sheet_row(payment)
-            logger.info("Appending payment to To'lovlar: payment_id=%s", payment.get("id"))
-            return await self._append_via_script("append_payment", row)
+            row = payment_to_history_row(payment)
+            return await self._append_via_script("append_payment_history", row)
         if not self._ready or not self._payment_worksheet:
             return False
         try:
-            row = payment_to_sheet_row(payment)
+            row = payment_to_history_row(payment)
             self._payment_worksheet.append_row(row, value_input_option="USER_ENTERED")
             return True
         except Exception as e:
-            logger.warning("Sheets append (To'lov) failed: %s", e)
+            logger.warning("Sheets append payment failed: %s", e)
             return False
+
+    async def update_payment_rows(self, updates: list[dict]) -> bool:
         if self._script_mode:
-            row = payment_to_sheet_row(payment)
-            return await self._append_via_script("append_payment", row)
-        if not self._ready or not self._payment_worksheet:
+            return await self._update_via_script("update_payments", updates)
+        if not self._ready or not self._main_worksheet:
             return False
         try:
-            row = payment_to_sheet_row(payment)
-            self._payment_worksheet.append_row(row, value_input_option="USER_ENTERED")
+            for u in updates:
+                pid = str(u["product_id"])
+                cell = self._main_worksheet.find(pid, in_column=1)
+                if cell:
+                    self._main_worksheet.update_cell(cell.row, 10, u["paid_amount"])
+                    self._main_worksheet.update_cell(cell.row, 11, u["remaining_amount"])
             return True
         except Exception as e:
-            logger.warning("Sheets append (To'lov) failed: %s", e)
+            logger.warning("Sheets update payments failed: %s", e)
             return False
 
 
