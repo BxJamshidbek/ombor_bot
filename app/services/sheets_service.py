@@ -221,7 +221,7 @@ class SheetsService:
         logger.info("Apps Script POST: action=%s", action)
         try:
             resp = await asyncio.to_thread(
-                requests.post, webapp_url, json=payload, timeout=5
+                requests.post, webapp_url, json=payload, timeout=15
             )
             logger.info("Apps Script response: status=%s", resp.status_code)
             if resp.status_code != 200:
@@ -253,7 +253,7 @@ class SheetsService:
         logger.info("Apps Script POST: action=%s", action)
         try:
             resp = await asyncio.to_thread(
-                requests.post, webapp_url, json=payload, timeout=5
+                requests.post, webapp_url, json=payload, timeout=15
             )
             logger.info("Apps Script response: status=%s", resp.status_code)
             if resp.status_code != 200:
