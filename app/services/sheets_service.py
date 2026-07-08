@@ -62,7 +62,7 @@ def product_to_main_sheet_row(
         paid_amount,
         remaining_amount if remaining_amount is not None else total,
         product.get("status", "active"),
-        product.get("created_at", datetime.now(timezone.utc).isoformat()),
+        product.get("created_at") or "",
         "",
         "",
     ]
@@ -255,11 +255,19 @@ class SheetsService:
             return False
 
     async def update_exit_row(self, exit_data: dict[str, Any]) -> bool:
+        exit_data["status"] = "exited"
+        row_data = {**exit_data, "id": exit_data.get("product_id")}
+        row = product_to_main_sheet_row(
+            row_data,
+            paid_amount=0,
+            remaining_amount=exit_data.get("total_price", 0),
+        )
         data = {
             "product_id": exit_data.get("product_id"),
             "status": "exited",
             "exited_at": exit_data.get("exited_at", ""),
             "note": exit_data.get("note", "") or "",
+            "row": row,
         }
         if self._script_mode:
             return await self._update_via_script("update_exit", data)
@@ -273,8 +281,8 @@ class SheetsService:
                 self._main_worksheet.update_cell(cell.row, 14, data["exited_at"])
                 self._main_worksheet.update_cell(cell.row, 15, data["note"])
                 return True
-            logger.warning("Product ID %s not found in Ombor sheet", product_id)
-            return False
+            self._main_worksheet.append_row(row, value_input_option="USER_ENTERED")
+            return True
         except Exception as e:
             logger.warning("Sheets update exit failed: %s", e)
             return False

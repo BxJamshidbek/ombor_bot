@@ -67,6 +67,83 @@ def test_product_to_main_sheet_row_missing_fields():
     assert row[10] == 0
 
 
+def test_product_to_main_sheet_row_no_created_at():
+    product = {
+        "id": 1,
+        "product_name": "Olma",
+        "kg_amount": 10,
+        "total_price": 20000,
+    }
+    row = product_to_main_sheet_row(product, paid_amount=0, remaining_amount=20000)
+    assert row[12] == ""
+    assert len(row) == 15
+
+
+def test_product_to_main_sheet_row_exited_status():
+    product = {
+        "id": 1,
+        "product_name": "Olma",
+        "status": "exited",
+        "total_price": 20000,
+    }
+    row = product_to_main_sheet_row(product, paid_amount=0, remaining_amount=20000)
+    assert row[11] == "exited"
+
+
+def test_update_exit_payload_has_row():
+    exit_data = {
+        "product_id": 42,
+        "id": 42,
+        "telegram_id": 123456789,
+        "phone": "+998901234567",
+        "client_name": "Ali Valiyev",
+        "product_name": "Olma",
+        "kg_amount": 20.0,
+        "box_count": 5,
+        "price_per_kg": 2000.0,
+        "total_price": 40000.0,
+        "status": "exited",
+        "exited_at": "2026-07-08T12:00:00",
+        "note": "Yetkazildi",
+    }
+    row = product_to_main_sheet_row(
+        exit_data, paid_amount=0, remaining_amount=exit_data["total_price"]
+    )
+    assert len(row) == 15
+    assert row[0] == 42
+    assert row[11] == "exited"
+    assert row[14] == ""
+
+
+def test_update_exit_payload_row_values():
+    exit_data = {
+        "product_id": 1,
+        "id": 1,
+        "telegram_id": 111,
+        "phone": "+998901111111",
+        "client_name": "Test",
+        "product_name": "Banan",
+        "kg_amount": 15.0,
+        "box_count": 3,
+        "price_per_kg": 5000.0,
+        "total_price": 75000.0,
+        "status": "exited",
+        "exited_at": "2026-07-08T15:00:00",
+        "note": "Tez orqali",
+    }
+    row = product_to_main_sheet_row(
+        exit_data, paid_amount=0, remaining_amount=75000
+    )
+    assert row[0] == 1
+    assert row[4] == "Banan"
+    assert row[5] == 15.0
+    assert row[8] == 75000.0
+    assert row[9] == 0
+    assert row[10] == 75000
+    assert row[11] == "exited"
+    assert row[12] == ""
+
+
 def test_payment_to_history_row_full():
     payment = {
         "id": 1,

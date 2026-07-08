@@ -89,13 +89,22 @@ function appendProduct_(row) {
 function updateExit_(data) {
   const sheet = getOrCreateSheet_(MAIN_SHEET_NAME, MAIN_HEADERS);
   const row = findRowByProductId_(sheet, data.product_id);
-  if (!row) {
-    return false;
+  if (row) {
+    sheet.getRange(row, 12).setValue(data.status || "exited");
+    sheet.getRange(row, 14).setValue(data.exited_at || "");
+    sheet.getRange(row, 15).setValue(data.note || "");
+    return { updated: true, appended: false };
   }
-  sheet.getRange(row, 12).setValue(data.status || "exited");
-  sheet.getRange(row, 14).setValue(data.exited_at || "");
-  sheet.getRange(row, 15).setValue(data.note || "");
-  return true;
+
+  if (data.row && Array.isArray(data.row)) {
+    const normalized = MAIN_HEADERS.map((_, index) => {
+      return data.row[index] === undefined || data.row[index] === null ? "" : data.row[index];
+    });
+    sheet.appendRow(normalized);
+    return { updated: false, appended: true };
+  }
+
+  return { updated: false, appended: false };
 }
 
 function appendPaymentHistory_(row) {
@@ -141,8 +150,8 @@ function doPost(e) {
     }
 
     if (payload.action === "update_exit") {
-      updateExit_(payload.data);
-      return jsonOutput({ ok: true });
+      const result = updateExit_(payload.data);
+      return jsonOutput({ ok: true, ...result });
     }
 
     if (payload.action === "append_payment_history") {

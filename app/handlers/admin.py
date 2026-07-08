@@ -512,7 +512,7 @@ async def exit_product_confirm(message: Message, state: FSMContext):
 
                 if sheets_ok:
                     await message.answer(
-                        "Mahsulot chiqim qilindi ✅",
+                        "Mahsulot SQLite va Google Sheets'da chiqim qilindi ✅",
                         reply_markup=admin_panel_kb(),
                     )
                 else:
