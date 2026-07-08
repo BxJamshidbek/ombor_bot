@@ -27,6 +27,7 @@ const KIRIM_HEADERS = [
   "Kg miqdori",
   "1 kg narxi",
   "Saqlash muddati (kun)",
+  "Tugash sanasi",
   "Umumiy summa",
   "Status",
   "Yaratilgan sana"

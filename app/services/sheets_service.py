@@ -1,9 +1,10 @@
+import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import aiohttp
+import requests
 
 from app.config import config
 
@@ -20,6 +21,7 @@ KIRIM_HEADERS = [
     "Kg miqdori",
     "1 kg narxi",
     "Saqlash muddati (kun)",
+    "Tugash sanasi",
     "Umumiy summa",
     "Status",
     "Yaratilgan sana",
@@ -41,7 +43,23 @@ CHIQIM_HEADERS = [
 ]
 
 
+def calculate_expire_date(created_at: str, storage_days: int) -> str:
+    if not created_at or not isinstance(storage_days, int):
+        return ""
+    try:
+        if "+" in created_at or created_at.endswith("Z"):
+            dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        else:
+            dt = datetime.fromisoformat(created_at)
+        expire = dt + timedelta(days=storage_days)
+        return expire.strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        return ""
+
+
 def product_to_sheet_row(product: dict[str, Any]) -> list[str | int | float]:
+    created_at = product.get("created_at", datetime.now(timezone.utc).isoformat())
+    storage_days = product.get("storage_days", 0)
     return [
         product.get("telegram_id", ""),
         product.get("phone", ""),
@@ -49,10 +67,11 @@ def product_to_sheet_row(product: dict[str, Any]) -> list[str | int | float]:
         product.get("product_name", ""),
         product.get("kg_amount", 0),
         product.get("price_per_kg", 0),
-        product.get("storage_days", 0),
+        storage_days,
+        calculate_expire_date(created_at, storage_days),
         product.get("total_price", 0),
         product.get("status", "active"),
-        product.get("created_at", datetime.now(timezone.utc).isoformat()),
+        created_at,
     ]
 
 
@@ -97,13 +116,12 @@ class SheetsService:
             self._ready = True
             webapp_url = config.google_script_webapp_url.rstrip("/")
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(webapp_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                        data = await resp.json()
-                        if data.get("ok"):
-                            logger.info("Google Sheets (Apps Script) ready at %s", webapp_url)
-                        else:
-                            logger.warning("Apps Script health check failed: %s", data)
+                resp = await asyncio.to_thread(requests.get, webapp_url, timeout=15)
+                if resp.status_code == 200 and resp.json().get("ok"):
+                    logger.info("Google Sheets (Apps Script) ready at %s", webapp_url)
+                else:
+                    logger.warning("Apps Script health check failed: status=%s body=%s",
+                                   resp.status_code, resp.text[:200])
             except Exception as e:
                 logger.warning("Apps Script health check error: %s", e)
             return
@@ -166,17 +184,21 @@ class SheetsService:
             "data": row,
         }
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    webapp_url,
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp:
-                    result = await resp.json()
-                    if result.get("ok"):
-                        return True
-                    logger.warning("Apps Script append failed: %s", result)
-                    return False
+            resp = await asyncio.to_thread(
+                requests.post, webapp_url, json=payload, timeout=15
+            )
+            if resp.status_code != 200:
+                logger.warning("Apps Script HTTP %s: %s", resp.status_code, resp.text[:200])
+                return False
+            try:
+                result = resp.json()
+            except ValueError:
+                logger.warning("Apps Script non-JSON response: %s", resp.text[:300])
+                return False
+            if result.get("ok"):
+                return True
+            logger.warning("Apps Script append failed: %s", result)
+            return False
         except Exception as e:
             logger.warning("Apps Script request error: %s", e)
             return False

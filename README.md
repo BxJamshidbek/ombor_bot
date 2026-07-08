@@ -169,9 +169,10 @@ GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
 5. Kg miqdori
 6. 1 kg narxi
 7. Saqlash muddati (kun)
-8. Umumiy summa
-9. Status
-10. Yaratilgan sana
+8. Tugash sanasi (Yaratilgan sana + Saqlash muddati)
+9. Umumiy summa
+10. Status
+11. Yaratilgan sana
 
 ### Chiqim sheet ustunlari
 

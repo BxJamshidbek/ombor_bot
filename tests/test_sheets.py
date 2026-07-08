@@ -1,6 +1,7 @@
 from app.services.sheets_service import (
     CHIQIM_HEADERS,
     KIRIM_HEADERS,
+    calculate_expire_date,
     exit_to_sheet_row,
     product_to_sheet_row,
 )
@@ -15,12 +16,13 @@ def test_headers_structure():
         "Kg miqdori",
         "1 kg narxi",
         "Saqlash muddati (kun)",
+        "Tugash sanasi",
         "Umumiy summa",
         "Status",
         "Yaratilgan sana",
     ]
     assert KIRIM_HEADERS == expected
-    assert len(KIRIM_HEADERS) == 10
+    assert len(KIRIM_HEADERS) == 11
 
 
 def test_product_to_sheet_row_full():
@@ -39,6 +41,7 @@ def test_product_to_sheet_row_full():
 
     row = product_to_sheet_row(product)
 
+    assert len(row) == 11
     assert row[0] == 123456789
     assert row[1] == "+998901234567"
     assert row[2] == "Ali Valiyev"
@@ -46,9 +49,10 @@ def test_product_to_sheet_row_full():
     assert row[4] == 20.0
     assert row[5] == 2000.0
     assert row[6] == 30
-    assert row[7] == 1200000.0
-    assert row[8] == "active"
-    assert row[9] == "2026-07-07T12:00:00"
+    assert row[7] == "2026-08-06"
+    assert row[8] == 1200000.0
+    assert row[9] == "active"
+    assert row[10] == "2026-07-07T12:00:00"
 
 
 def test_product_to_sheet_row_missing_fields():
@@ -59,6 +63,7 @@ def test_product_to_sheet_row_missing_fields():
 
     row = product_to_sheet_row(product)
 
+    assert len(row) == 11
     assert row[0] == 123
     assert row[1] == "+998901234567"
     assert row[2] == ""
@@ -66,9 +71,10 @@ def test_product_to_sheet_row_missing_fields():
     assert row[4] == 0
     assert row[5] == 0
     assert row[6] == 0
-    assert row[7] == 0
-    assert row[8] == "active"
-    assert isinstance(row[9], str)
+    assert isinstance(row[7], str) and len(row[7]) == 10
+    assert row[8] == 0
+    assert row[9] == "active"
+    assert isinstance(row[10], str)
 
 
 def test_product_to_sheet_row_order():
@@ -88,9 +94,42 @@ def test_product_to_sheet_row_order():
     product = {k: str(i) for i, k in enumerate(columns)}
     row = product_to_sheet_row(product)
 
-    assert row[0] == "0"  # telegram_id
-    assert row[3] == "3"  # product_name
-    assert row[9] == "9"  # created_at
+    assert row[0] == "0"
+    assert row[3] == "3"
+    assert row[6] == "6"
+    assert row[8] == "7"
+    assert row[9] == "8"
+    assert row[10] == "9"
+
+
+def test_calculate_expire_date_valid():
+    result = calculate_expire_date("2026-07-08T08:45:31+00:00", 90)
+    assert result == "2026-10-06"
+
+
+def test_calculate_expire_date_tz_naive():
+    result = calculate_expire_date("2026-07-07T12:00:00", 30)
+    assert result == "2026-08-06"
+
+
+def test_calculate_expire_date_z_suffix():
+    result = calculate_expire_date("2026-01-01T00:00:00Z", 1)
+    assert result == "2026-01-02"
+
+
+def test_calculate_expire_date_invalid_created_at():
+    result = calculate_expire_date("not-a-date", 10)
+    assert result == ""
+
+
+def test_calculate_expire_date_empty_string():
+    result = calculate_expire_date("", 5)
+    assert result == ""
+
+
+def test_calculate_expire_date_zero_days():
+    result = calculate_expire_date("2026-07-08T08:45:31+00:00", 0)
+    assert result == "2026-07-08"
 
 
 def test_chiqim_headers_structure():
