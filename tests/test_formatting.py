@@ -2,13 +2,12 @@ from app.services.formatting_service import (
     format_active_products_for_exit,
     format_admin_stats,
     format_client_list,
-    format_expiring_products,
     format_product_list,
 )
 
 
 def make_product(name: str, kg: float = 10, price: float = 2000,
-                 days: int = 30, total: float = 600000,
+                 box_count: int = 2, total: float = 20000,
                  status: str = "active", date: str = "2026-07-07T00:00:00",
                  _id: int = 1):
     return {
@@ -16,7 +15,7 @@ def make_product(name: str, kg: float = 10, price: float = 2000,
         "product_name": name,
         "kg_amount": kg,
         "price_per_kg": price,
-        "storage_days": days,
+        "box_count": box_count,
         "total_price": total,
         "status": status,
         "created_at": date,
@@ -33,7 +32,8 @@ def test_single_product():
     result = format_product_list(products)
     assert "Olma" in result
     assert "Kg: 10" in result
-    assert "600,000" in result
+    assert "Quti: 2" in result
+    assert "20,000" in result
     assert "Yana" not in result
 
 
@@ -56,16 +56,42 @@ def test_limit_exceeded_many():
 
 
 def test_formatting_elements():
-    p = make_product("Olma", kg=20, price=2000, days=30, total=1200000)
+    p = make_product("Olma", kg=20, price=2000, box_count=5, total=40000)
     result = format_product_list([p])
     assert "1." in result
     assert "Olma" in result
     assert "Kg: 20" in result
+    assert "Quti: 5" in result
     assert "2,000" in result
-    assert "30 kun" in result
-    assert "1,200,000" in result
+    assert "40,000" in result
     assert "active" in result
     assert "2026-07-07" in result
+    assert "Saqlash muddati" not in result
+    assert "Tugash" not in result
+
+
+def test_formatting_with_payment_summary():
+    products = [make_product("Olma", total=100000)]
+    summary = {
+        "total_amount": 100000,
+        "paid_amount": 30000,
+        "remaining_amount": 70000,
+    }
+    result = format_product_list(products, payment_summary=summary)
+    assert "Jami to'lov" in result
+    assert "100,000" in result
+    assert "To'langan" in result
+    assert "30,000" in result
+    assert "Qolgan" in result
+    assert "70,000" in result
+
+
+def test_formatting_without_payment_summary():
+    products = [make_product("Olma", total=50000)]
+    result = format_product_list(products)
+    assert "Jami to'lov" not in result
+    assert "To'langan" not in result
+    assert "Qolgan" not in result
 
 
 def make_client(name: str = "Ali Valiyev", phone: str = "+998901234567",
@@ -115,6 +141,8 @@ class TestFormatAdminStats:
             "active_products": 23,
             "total_kg": 530.5,
             "total_amount": 4500000,
+            "paid_amount": 2000000,
+            "remaining_amount": 2500000,
         }
         result = format_admin_stats(stats)
         assert "10" in result
@@ -122,6 +150,8 @@ class TestFormatAdminStats:
         assert "23" in result
         assert "530.5" in result
         assert "4,500,000" in result
+        assert "2,000,000" in result
+        assert "2,500,000" in result
 
     def test_zeros(self):
         stats = {
@@ -130,6 +160,8 @@ class TestFormatAdminStats:
             "active_products": 0,
             "total_kg": 0,
             "total_amount": 0,
+            "paid_amount": 0,
+            "remaining_amount": 0,
         }
         result = format_admin_stats(stats)
         assert "0" in result
@@ -146,6 +178,7 @@ class TestFormatActiveProductsForExit:
         assert "Olma" in result
         assert "<b>ID:</b> 1" in result
         assert "ID sini kiriting" in result
+        assert "Quti:" in result
 
     def test_multiple_products(self):
         products = [
@@ -159,49 +192,4 @@ class TestFormatActiveProductsForExit:
         assert "<b>ID:</b> 12" in result
         assert "Olma" in result
         assert "Banan" in result
-        assert "Anor" in result
-
-
-def make_expiring(name: str, client_name: str = "Ali Valiyev",
-                  phone: str = "+998901234567", kg: float = 20,
-                  expire_at: str = "2026-07-10", remaining_days: int = 2,
-                  _id: int = 1):
-    return {
-        "id": _id,
-        "product_name": name,
-        "client_name": client_name,
-        "phone": phone,
-        "kg_amount": kg,
-        "expire_at": expire_at,
-        "remaining_days": remaining_days,
-    }
-
-
-class TestFormatExpiringProducts:
-    def test_empty(self):
-        result = format_expiring_products([])
-        assert result == "Yaqin kunlarda muddati tugaydigan faol mahsulotlar yo'q."
-
-    def test_remaining_2_days(self):
-        products = [make_expiring("Olma", remaining_days=2)]
-        result = format_expiring_products(products)
-        assert "Olma" in result
-        assert "ID:" in result
-        assert "2 kun" in result
-        assert "muddati o'tgan" not in result
-
-    def test_expired(self):
-        products = [make_expiring("Banan", remaining_days=-3)]
-        result = format_expiring_products(products)
-        assert "Banan" in result
-        assert "muddati o'tgan" in result
-        assert "3 kun oldin" in result
-
-    def test_mixed_order(self):
-        products = [
-            make_expiring("Anor", remaining_days=5),
-            make_expiring("Olma", remaining_days=-2),
-        ]
-        result = format_expiring_products(products)
-        assert "Olma" in result
         assert "Anor" in result

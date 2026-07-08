@@ -8,11 +8,11 @@ from datetime import datetime, timezone
 from app.config import config
 from app.database import (
     create_product,
+    create_payment,
     exit_product,
     get_active_products_for_client,
     get_admin_stats,
     get_all_clients,
-    get_expiring_products,
     get_product_by_id,
     get_user_by_phone,
 )
@@ -20,12 +20,11 @@ from app.services.formatting_service import (
     format_active_products_for_exit,
     format_admin_stats,
     format_client_list,
-    format_expiring_products,
 )
 from app.keyboards import admin_panel_kb, cancel_kb, confirmation_kb
 from app.services.calculation_service import calculate_total_price
 from app.services.sheets_service import sheets_service
-from app.states import AdminAddProduct, AdminExitProduct
+from app.states import AdminAddProduct, AdminExitProduct, AdminAddPayment
 from app.utils.validators import (
     normalize_phone,
     validate_phone_number,
@@ -169,34 +168,34 @@ async def add_product_price(message: Message, state: FSMContext):
         return
 
     await state.update_data(price_per_kg=price)
-    await state.set_state(AdminAddProduct.waiting_for_storage_days)
+    await state.set_state(AdminAddProduct.waiting_for_box_count)
     await message.answer(
-        "Saqlash muddatini kunlarda kiriting:\n\nMasalan: 30",
+        "Qutilar sonini kiriting:\n\nMasalan: 5",
         reply_markup=cancel_kb(),
     )
 
 
-@router.message(AdminAddProduct.waiting_for_storage_days, F.text)
-async def add_product_storage_days(message: Message, state: FSMContext):
+@router.message(AdminAddProduct.waiting_for_box_count, F.text)
+async def add_product_box_count(message: Message, state: FSMContext):
     text = message.text.strip()
 
     if text == "❌ Bekor qilish":
         await cancel_flow(message, state)
         return
 
-    days = validate_positive_int(text)
-    if days is None:
+    box_count = validate_positive_int(text)
+    if box_count is None:
         await message.answer(
-            "Noto'g'ri muddat. Faqat musbat butun son kiriting.\n\nMasalan: 30",
+            "Noto'g'ri qiymat. Faqat musbat butun son kiriting.\n\nMasalan: 5",
             reply_markup=cancel_kb(),
         )
         return
 
-    data = await state.update_data(storage_days=days)
+    data = await state.update_data(box_count=box_count)
 
     kg_amount = data["kg_amount"]
     price_per_kg = data["price_per_kg"]
-    total_price = calculate_total_price(kg_amount, price_per_kg, days)
+    total_price = calculate_total_price(kg_amount, price_per_kg)
 
     await state.update_data(total_price=total_price)
 
@@ -208,8 +207,8 @@ async def add_product_storage_days(message: Message, state: FSMContext):
         f"───────────────\n"
         f"<b>Mahsulot:</b> {data['product_name']}\n"
         f"<b>Kg:</b> {kg_amount}\n"
+        f"<b>Qutilar soni:</b> {box_count}\n"
         f"<b>1 kg narxi:</b> {price_per_kg:,.0f} so'm\n"
-        f"<b>Saqlash muddati:</b> {days} kun\n"
         f"───────────────\n"
         f"<b>Umumiy summa:</b> {total_price:,.0f} so'm\n\n"
         f"Bazaga saqlansinmi?"
@@ -237,7 +236,7 @@ async def add_product_confirm(message: Message, state: FSMContext):
             product_name=data["product_name"],
             kg_amount=data["kg_amount"],
             price_per_kg=data["price_per_kg"],
-            storage_days=data["storage_days"],
+            box_count=data["box_count"],
             total_price=data["total_price"],
         )
 
@@ -296,7 +295,8 @@ async def cancel_flow(message: Message, state: FSMContext):
     )
 
 
-@router.message(F.text == "❌ Bekor qilish", StateFilter(AdminAddProduct, AdminExitProduct))
+@router.message(F.text == "❌ Bekor qilish",
+                StateFilter(AdminAddProduct, AdminExitProduct, AdminAddPayment))
 async def cancel_product_flow(message: Message, state: FSMContext):
     await cancel_flow(message, state)
 
@@ -312,13 +312,6 @@ async def list_clients(message: Message):
 async def admin_stats(message: Message):
     stats = await get_admin_stats()
     text = format_admin_stats(stats)
-    await message.answer(text, reply_markup=admin_panel_kb())
-
-
-@router.message(F.text == "⏰ Muddat nazorati", IsAdmin())
-async def admin_expiring_products(message: Message):
-    products = await get_expiring_products(days_ahead=3)
-    text = format_expiring_products(products)
     await message.answer(text, reply_markup=admin_panel_kb())
 
 
@@ -426,7 +419,6 @@ async def exit_product_select(message: Message, state: FSMContext):
         selected_product_name=product["product_name"],
         selected_kg=product["kg_amount"],
         selected_price=product["price_per_kg"],
-        selected_storage_days=product["storage_days"],
         selected_total=product["total_price"],
     )
 
@@ -522,6 +514,171 @@ async def exit_product_confirm(message: Message, state: FSMContext):
 
 @router.message(AdminExitProduct.waiting_for_confirmation)
 async def exit_product_confirm_invalid(message: Message):
+    await message.answer(
+        "Iltimos, quyidagi tugmalardan birini tanlang:",
+        reply_markup=confirmation_kb(),
+    )
+
+
+@router.message(F.text == "💳 To'lov kiritish", IsAdmin())
+async def payment_start(message: Message, state: FSMContext):
+    await state.set_state(AdminAddPayment.waiting_for_client_phone)
+    await message.answer(
+        "Mijozning telefon raqamini kiriting:\n\n"
+        "Masalan: +998901234567 yoki 901234567",
+        reply_markup=cancel_kb(),
+    )
+
+
+@router.message(AdminAddPayment.waiting_for_client_phone, F.text)
+async def payment_client_phone(message: Message, state: FSMContext):
+    text = message.text.strip()
+
+    if text == "❌ Bekor qilish":
+        await cancel_flow(message, state)
+        return
+
+    normalized = normalize_phone(text)
+    if not validate_phone_number(normalized):
+        await message.answer(
+            "Noto'g'ri telefon raqam formati. Qaytadan urinib ko'ring.\n\n"
+            "Masalan: +998901234567",
+            reply_markup=cancel_kb(),
+        )
+        return
+
+    user = await get_user_by_phone(normalized)
+    if user is None:
+        await message.answer(
+            "Bu telefon raqam bilan ro'yxatdan o'tgan mijoz topilmadi.",
+            reply_markup=cancel_kb(),
+        )
+        return
+
+    await state.update_data(
+        client_id=user["id"],
+        telegram_id=user["telegram_id"],
+        phone=user["phone"],
+        client_name=user["full_name"],
+    )
+    await state.set_state(AdminAddPayment.waiting_for_amount)
+    await message.answer(
+        f"✅ Mijoz topildi: {user['full_name'] or 'Ismsiz'} "
+        f"({user['phone']})\n\n"
+        "To'lov summasini so'mda kiriting:\n\nMasalan: 500000",
+        reply_markup=cancel_kb(),
+    )
+
+
+@router.message(AdminAddPayment.waiting_for_amount, F.text)
+async def payment_amount(message: Message, state: FSMContext):
+    text = message.text.strip()
+
+    if text == "❌ Bekor qilish":
+        await cancel_flow(message, state)
+        return
+
+    amount = validate_quantity(text)
+    if amount is None or amount <= 0:
+        await message.answer(
+            "Noto'g'ri summa. Faqat musbat son kiriting.\n\nMasalan: 500000",
+            reply_markup=cancel_kb(),
+        )
+        return
+
+    await state.update_data(amount=amount)
+    await state.set_state(AdminAddPayment.waiting_for_note)
+    await message.answer(
+        "Izoh kiriting yoki izohsiz davom etish uchun '-' yuboring:",
+        reply_markup=cancel_kb(),
+    )
+
+
+@router.message(AdminAddPayment.waiting_for_note, F.text)
+async def payment_note(message: Message, state: FSMContext):
+    text = message.text.strip()
+
+    if text == "❌ Bekor qilish":
+        await cancel_flow(message, state)
+        return
+
+    note = None if text == "-" else text
+    data = await state.update_data(note=note)
+
+    summary = (
+        f"💳 <b>To'lov tasdiqlash</b>\n\n"
+        f"<b>Mijoz:</b> {data['client_name'] or 'Ismsiz'}\n"
+        f"<b>Telefon:</b> {data['phone']}\n"
+        f"───────────────\n"
+        f"<b>To'lov summasi:</b> {data['amount']:,.0f} so'm\n"
+        f"<b>Izoh:</b> {data['note'] or '—'}\n\n"
+        f"To'lov bazaga saqlansinmi?"
+    )
+
+    await state.set_state(AdminAddPayment.waiting_for_confirmation)
+    await message.answer(summary, reply_markup=confirmation_kb())
+
+
+@router.message(AdminAddPayment.waiting_for_confirmation, F.text)
+async def payment_confirm(message: Message, state: FSMContext):
+    text = message.text.strip()
+
+    if text == "❌ Bekor qilish":
+        await cancel_flow(message, state)
+        return
+
+    if text == "Ha ✅":
+        data = await state.get_data()
+        payment = await create_payment(
+            client_id=data["client_id"],
+            telegram_id=data["telegram_id"],
+            phone=data["phone"],
+            client_name=data["client_name"],
+            amount=data["amount"],
+            created_by_admin_id=message.from_user.id,
+            note=data.get("note"),
+        )
+
+        await state.clear()
+        if payment is None:
+            await message.answer(
+                "To'lovni saqlashda xatolik bo'ldi.",
+                reply_markup=admin_panel_kb(),
+            )
+        elif not sheets_service.is_configured():
+            await message.answer(
+                "To'lov bazaga saqlandi ✅. "
+                "Google Sheets sozlanmagan, shuning uchun Sheets'ga yozilmadi.",
+                reply_markup=admin_panel_kb(),
+            )
+        elif await sheets_service.append_payment_row(payment):
+            await message.answer(
+                "To'lov bazaga saqlandi ✅",
+                reply_markup=admin_panel_kb(),
+            )
+        else:
+            await message.answer(
+                "To'lov bazaga saqlandi ✅, "
+                "lekin Google Sheets'ga yozishda xatolik bo'ldi ⚠️",
+                reply_markup=admin_panel_kb(),
+            )
+
+    elif text == "Yo'q ❌":
+        await state.clear()
+        await message.answer(
+            "Jarayon bekor qilindi.",
+            reply_markup=admin_panel_kb(),
+        )
+
+    else:
+        await message.answer(
+            "Iltimos, quyidagi tugmalardan birini tanlang:",
+            reply_markup=confirmation_kb(),
+        )
+
+
+@router.message(AdminAddPayment.waiting_for_confirmation)
+async def payment_confirm_invalid(message: Message):
     await message.answer(
         "Iltimos, quyidagi tugmalardan birini tanlang:",
         reply_markup=confirmation_kb(),

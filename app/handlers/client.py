@@ -1,7 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message
 
-from app.database import get_products_by_client_id, get_user_by_telegram_id
+from app.database import get_client_payment_summary, get_products_by_client_id, get_user_by_telegram_id
 from app.keyboards import main_menu_kb
 from app.services.formatting_service import format_product_list
 
@@ -16,7 +16,8 @@ async def my_products(message: Message):
         return
 
     products = await get_products_by_client_id(user["id"])
-    text = format_product_list(products)
+    summary = await get_client_payment_summary(user["id"])
+    text = format_product_list(products, payment_summary=summary)
     await message.answer(text, reply_markup=main_menu_kb(user["role"]))
 
 
@@ -30,6 +31,7 @@ async def help_handler(message: Message):
             "🤖 <b>Ombor boti — Admin yordam</b>\n\n"
             "/admin - Admin panel\n"
             "➕ Mahsulot qo'shish - Mijozga mahsulot qo'shish\n"
+            "💳 To'lov kiritish - Mijoz to'lovini kiritish\n"
             "📋 Mijozlarni ko'rish - Mijozlar ro'yxati\n"
             "📊 Hisobot - Hisobot\n\n"
             "Mijozlarga /start bosib ro'yxatdan o'tishni tavsiya eting."

@@ -1,6 +1,5 @@
 import aiosqlite
-from datetime import datetime, timezone, timedelta
-from math import ceil
+from datetime import datetime, timezone
 
 from app.config import config
 
@@ -43,6 +42,7 @@ async def init_db() -> None:
                 price_per_kg REAL NOT NULL,
                 storage_days INTEGER NOT NULL,
                 total_price REAL NOT NULL,
+                box_count INTEGER NOT NULL DEFAULT 0,
                 exited_at TEXT NOT NULL,
                 created_by_admin_id INTEGER NOT NULL DEFAULT 0,
                 note TEXT,
@@ -61,6 +61,11 @@ async def init_db() -> None:
             await conn.execute(
                 "ALTER TABLE exits ADD COLUMN note TEXT"
             )
+        if "box_count" not in existing_cols:
+            await conn.execute(
+                "ALTER TABLE exits ADD COLUMN box_count INTEGER NOT NULL DEFAULT 0"
+            )
+
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,11 +76,34 @@ async def init_db() -> None:
                 product_name TEXT NOT NULL,
                 kg_amount REAL NOT NULL,
                 price_per_kg REAL NOT NULL,
-                storage_days INTEGER NOT NULL,
+                storage_days INTEGER NOT NULL DEFAULT 0,
                 total_price REAL NOT NULL,
                 status TEXT NOT NULL DEFAULT 'active',
                 created_at TEXT NOT NULL,
                 updated_at TEXT,
+                box_count INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (client_id) REFERENCES users(id)
+            )
+        """)
+
+        cursor = await conn.execute("PRAGMA table_info(products)")
+        existing_prod_cols = {row["name"] for row in await cursor.fetchall()}
+        if "box_count" not in existing_prod_cols:
+            await conn.execute(
+                "ALTER TABLE products ADD COLUMN box_count INTEGER NOT NULL DEFAULT 0"
+            )
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                phone TEXT NOT NULL,
+                client_name TEXT,
+                amount REAL NOT NULL,
+                note TEXT,
+                created_by_admin_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
                 FOREIGN KEY (client_id) REFERENCES users(id)
             )
         """)
@@ -141,7 +169,7 @@ async def create_product(
     product_name: str,
     kg_amount: float,
     price_per_kg: float,
-    storage_days: int,
+    box_count: int,
     total_price: float,
 ) -> int:
     conn = await get_connection()
@@ -151,14 +179,79 @@ async def create_product(
             """
             INSERT INTO products
                 (client_id, telegram_id, phone, client_name, product_name,
-                 kg_amount, price_per_kg, storage_days, total_price, created_at)
+                 kg_amount, price_per_kg, total_price, box_count, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (client_id, telegram_id, phone, client_name, product_name,
-             kg_amount, price_per_kg, storage_days, total_price, now),
+             kg_amount, price_per_kg, total_price, box_count, now),
         )
         await conn.commit()
         return cursor.lastrowid
+    finally:
+        await conn.close()
+
+
+async def create_payment(
+    client_id: int,
+    telegram_id: int,
+    phone: str,
+    client_name: str | None,
+    amount: float,
+    created_by_admin_id: int,
+    note: str | None = None,
+) -> dict:
+    conn = await get_connection()
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        cursor = await conn.execute(
+            """
+            INSERT INTO payments
+                (client_id, telegram_id, phone, client_name, amount, note,
+                 created_by_admin_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (client_id, telegram_id, phone, client_name, amount, note,
+             created_by_admin_id, now),
+        )
+        await conn.commit()
+        return {
+            "id": cursor.lastrowid,
+            "client_id": client_id,
+            "telegram_id": telegram_id,
+            "phone": phone,
+            "client_name": client_name,
+            "amount": amount,
+            "note": note,
+            "created_by_admin_id": created_by_admin_id,
+            "created_at": now,
+        }
+    except Exception:
+        await conn.rollback()
+        return None
+    finally:
+        await conn.close()
+
+
+async def get_client_payment_summary(client_id: int) -> dict:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(total_price), 0) as s FROM products WHERE client_id = ?",
+            (client_id,),
+        )
+        total_amount = (await cursor.fetchone())["s"]
+
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) as s FROM payments WHERE client_id = ?",
+            (client_id,),
+        )
+        paid_amount = (await cursor.fetchone())["s"]
+
+        return {
+            "total_amount": total_amount,
+            "paid_amount": paid_amount,
+            "remaining_amount": total_amount - paid_amount,
+        }
     finally:
         await conn.close()
 
@@ -210,9 +303,14 @@ async def get_admin_stats() -> dict:
         total_kg = (await cursor.fetchone())["s"]
 
         cursor = await conn.execute(
-            "SELECT COALESCE(SUM(total_price), 0) as s FROM products WHERE status = 'active'"
+            "SELECT COALESCE(SUM(total_price), 0) as s FROM products"
         )
         total_amount = (await cursor.fetchone())["s"]
+
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) as s FROM payments"
+        )
+        paid_amount = (await cursor.fetchone())["s"]
 
         return {
             "total_clients": total_clients,
@@ -220,6 +318,8 @@ async def get_admin_stats() -> dict:
             "active_products": active_products,
             "total_kg": total_kg,
             "total_amount": total_amount,
+            "paid_amount": paid_amount,
+            "remaining_amount": total_amount - paid_amount,
         }
     finally:
         await conn.close()
@@ -269,14 +369,15 @@ async def exit_product(product_id: int, admin_id: int, note: str | None = None) 
             INSERT INTO exits
                 (product_id, client_id, telegram_id, phone, client_name,
                  product_name, kg_amount, price_per_kg, storage_days,
-                 total_price, exited_at, created_by_admin_id, note)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 total_price, box_count, exited_at, created_by_admin_id, note)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 product["id"], product["client_id"], product["telegram_id"],
                 product["phone"], product["client_name"], product["product_name"],
                 product["kg_amount"], product["price_per_kg"],
-                product["storage_days"], product["total_price"], now,
+                product["storage_days"], product["total_price"],
+                product["box_count"], now,
                 admin_id, note,
             ),
         )
@@ -297,6 +398,7 @@ async def exit_product(product_id: int, admin_id: int, note: str | None = None) 
             "price_per_kg": product["price_per_kg"],
             "storage_days": product["storage_days"],
             "total_price": product["total_price"],
+            "box_count": product["box_count"],
             "exited_at": now,
             "created_by_admin_id": admin_id,
             "note": note,
@@ -308,25 +410,14 @@ async def exit_product(product_id: int, admin_id: int, note: str | None = None) 
         await conn.close()
 
 
-async def get_expiring_products(days_ahead: int = 3) -> list[dict]:
+async def get_payment_by_id(payment_id: int) -> dict | None:
     conn = await get_connection()
     try:
         cursor = await conn.execute(
-            "SELECT * FROM products WHERE status = 'active'"
+            "SELECT * FROM payments WHERE id = ?",
+            (payment_id,),
         )
-        rows = await cursor.fetchall()
-        now = datetime.now(timezone.utc)
-        result = []
-        for row in rows:
-            p = dict(row)
-            created = datetime.fromisoformat(p["created_at"])
-            expire = created + timedelta(days=p["storage_days"])
-            remaining = (expire - now).total_seconds() / 86400
-            if remaining <= days_ahead:
-                p["expire_at"] = expire.strftime("%Y-%m-%d")
-                p["remaining_days"] = int(-ceil(-remaining)) if remaining >= 0 else int(remaining)
-                result.append(p)
-        result.sort(key=lambda x: x["remaining_days"])
-        return result
+        row = await cursor.fetchone()
+        return dict(row) if row else None
     finally:
         await conn.close()

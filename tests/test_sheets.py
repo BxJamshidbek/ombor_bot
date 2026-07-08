@@ -1,135 +1,28 @@
 from app.services.sheets_service import (
     CHIQIM_HEADERS,
     KIRIM_HEADERS,
-    calculate_expire_date,
+    PAYMENT_HEADERS,
     exit_to_sheet_row,
+    payment_to_sheet_row,
     product_to_sheet_row,
 )
 
 
-def test_headers_structure():
+def test_kirim_headers_structure():
     expected = [
         "Telegram ID",
         "Telefon raqam",
         "Ism",
         "Mahsulot nomi",
         "Kg miqdori",
+        "Qutilar soni",
         "1 kg narxi",
-        "Saqlash muddati (kun)",
-        "Tugash sanasi",
         "Umumiy summa",
         "Status",
         "Yaratilgan sana",
     ]
     assert KIRIM_HEADERS == expected
-    assert len(KIRIM_HEADERS) == 11
-
-
-def test_product_to_sheet_row_full():
-    product = {
-        "telegram_id": 123456789,
-        "phone": "+998901234567",
-        "client_name": "Ali Valiyev",
-        "product_name": "Olma",
-        "kg_amount": 20.0,
-        "price_per_kg": 2000.0,
-        "storage_days": 30,
-        "total_price": 1200000.0,
-        "status": "active",
-        "created_at": "2026-07-07T12:00:00",
-    }
-
-    row = product_to_sheet_row(product)
-
-    assert len(row) == 11
-    assert row[0] == 123456789
-    assert row[1] == "+998901234567"
-    assert row[2] == "Ali Valiyev"
-    assert row[3] == "Olma"
-    assert row[4] == 20.0
-    assert row[5] == 2000.0
-    assert row[6] == 30
-    assert row[7] == "2026-08-06"
-    assert row[8] == 1200000.0
-    assert row[9] == "active"
-    assert row[10] == "2026-07-07T12:00:00"
-
-
-def test_product_to_sheet_row_missing_fields():
-    product = {
-        "telegram_id": 123,
-        "phone": "+998901234567",
-    }
-
-    row = product_to_sheet_row(product)
-
-    assert len(row) == 11
-    assert row[0] == 123
-    assert row[1] == "+998901234567"
-    assert row[2] == ""
-    assert row[3] == ""
-    assert row[4] == 0
-    assert row[5] == 0
-    assert row[6] == 0
-    assert isinstance(row[7], str) and len(row[7]) == 10
-    assert row[8] == 0
-    assert row[9] == "active"
-    assert isinstance(row[10], str)
-
-
-def test_product_to_sheet_row_order():
-    columns = [
-        "telegram_id",
-        "phone",
-        "client_name",
-        "product_name",
-        "kg_amount",
-        "price_per_kg",
-        "storage_days",
-        "total_price",
-        "status",
-        "created_at",
-    ]
-
-    product = {k: str(i) for i, k in enumerate(columns)}
-    row = product_to_sheet_row(product)
-
-    assert row[0] == "0"
-    assert row[3] == "3"
-    assert row[6] == "6"
-    assert row[8] == "7"
-    assert row[9] == "8"
-    assert row[10] == "9"
-
-
-def test_calculate_expire_date_valid():
-    result = calculate_expire_date("2026-07-08T08:45:31+00:00", 90)
-    assert result == "2026-10-06"
-
-
-def test_calculate_expire_date_tz_naive():
-    result = calculate_expire_date("2026-07-07T12:00:00", 30)
-    assert result == "2026-08-06"
-
-
-def test_calculate_expire_date_z_suffix():
-    result = calculate_expire_date("2026-01-01T00:00:00Z", 1)
-    assert result == "2026-01-02"
-
-
-def test_calculate_expire_date_invalid_created_at():
-    result = calculate_expire_date("not-a-date", 10)
-    assert result == ""
-
-
-def test_calculate_expire_date_empty_string():
-    result = calculate_expire_date("", 5)
-    assert result == ""
-
-
-def test_calculate_expire_date_zero_days():
-    result = calculate_expire_date("2026-07-08T08:45:31+00:00", 0)
-    assert result == "2026-07-08"
+    assert len(KIRIM_HEADERS) == 10
 
 
 def test_chiqim_headers_structure():
@@ -140,8 +33,8 @@ def test_chiqim_headers_structure():
         "Ism",
         "Mahsulot nomi",
         "Kg miqdori",
+        "Qutilar soni",
         "1 kg narxi",
-        "Saqlash muddati (kun)",
         "Umumiy summa",
         "Chiqim sanasi",
         "Admin Telegram ID",
@@ -149,6 +42,98 @@ def test_chiqim_headers_structure():
     ]
     assert CHIQIM_HEADERS == expected
     assert len(CHIQIM_HEADERS) == 12
+
+
+def test_payment_headers_structure():
+    expected = [
+        "Payment ID",
+        "Telegram ID",
+        "Telefon raqam",
+        "Ism",
+        "To'lov summasi",
+        "Izoh",
+        "Admin Telegram ID",
+        "Yaratilgan sana",
+    ]
+    assert PAYMENT_HEADERS == expected
+    assert len(PAYMENT_HEADERS) == 8
+
+
+def test_product_to_sheet_row_full():
+    product = {
+        "telegram_id": 123456789,
+        "phone": "+998901234567",
+        "client_name": "Ali Valiyev",
+        "product_name": "Olma",
+        "kg_amount": 20.0,
+        "box_count": 5,
+        "price_per_kg": 2000.0,
+        "total_price": 40000.0,
+        "status": "active",
+        "created_at": "2026-07-07T12:00:00",
+    }
+
+    row = product_to_sheet_row(product)
+
+    assert len(row) == 10
+    assert row[0] == 123456789
+    assert row[1] == "+998901234567"
+    assert row[2] == "Ali Valiyev"
+    assert row[3] == "Olma"
+    assert row[4] == 20.0
+    assert row[5] == 5
+    assert row[6] == 2000.0
+    assert row[7] == 40000.0
+    assert row[8] == "active"
+    assert row[9] == "2026-07-07T12:00:00"
+
+
+def test_product_to_sheet_row_missing_fields():
+    product = {
+        "telegram_id": 123,
+        "phone": "+998901234567",
+    }
+
+    row = product_to_sheet_row(product)
+
+    assert len(row) == 10
+    assert row[0] == 123
+    assert row[1] == "+998901234567"
+    assert row[2] == ""
+    assert row[3] == ""
+    assert row[4] == 0
+    assert row[5] == 0
+    assert row[6] == 0
+    assert row[7] == 0
+    assert row[8] == "active"
+    assert isinstance(row[9], str)
+
+
+def test_product_to_sheet_row_order():
+    columns = [
+        "telegram_id",
+        "phone",
+        "client_name",
+        "product_name",
+        "kg_amount",
+        "box_count",
+        "price_per_kg",
+        "total_price",
+        "status",
+        "created_at",
+    ]
+
+    product = {k: str(i) for i, k in enumerate(columns)}
+    row = product_to_sheet_row(product)
+
+    assert row[0] == "0"
+    assert row[3] == "3"
+    assert row[4] == "4"
+    assert row[5] == "5"
+    assert row[6] == "6"
+    assert row[7] == "7"
+    assert row[8] == "8"
+    assert row[9] == "9"
 
 
 def test_exit_to_sheet_row_full():
@@ -159,9 +144,9 @@ def test_exit_to_sheet_row_full():
         "client_name": "Ali Valiyev",
         "product_name": "Olma",
         "kg_amount": 20.0,
+        "box_count": 5,
         "price_per_kg": 2000.0,
-        "storage_days": 30,
-        "total_price": 1200000.0,
+        "total_price": 40000.0,
         "exited_at": "2026-07-07T12:00:00",
         "created_by_admin_id": 987654321,
         "note": "Mijoz olib ketdi",
@@ -169,15 +154,16 @@ def test_exit_to_sheet_row_full():
 
     row = exit_to_sheet_row(exit_data)
 
+    assert len(row) == 12
     assert row[0] == 42
     assert row[1] == 123456789
     assert row[2] == "+998901234567"
     assert row[3] == "Ali Valiyev"
     assert row[4] == "Olma"
     assert row[5] == 20.0
-    assert row[6] == 2000.0
-    assert row[7] == 30
-    assert row[8] == 1200000.0
+    assert row[6] == 5
+    assert row[7] == 2000.0
+    assert row[8] == 40000.0
     assert row[9] == "2026-07-07T12:00:00"
     assert row[10] == 987654321
     assert row[11] == "Mijoz olib ketdi"
@@ -196,5 +182,47 @@ def test_exit_to_sheet_row_note_none():
     row = exit_to_sheet_row(exit_data)
 
     assert row[0] == 1
-    assert row[11] == ""
     assert row[10] == 987
+    assert row[11] == ""
+
+
+def test_payment_to_sheet_row_full():
+    payment = {
+        "id": 1,
+        "telegram_id": 123456789,
+        "phone": "+998901234567",
+        "client_name": "Ali Valiyev",
+        "amount": 500000.0,
+        "note": "Avans",
+        "created_by_admin_id": 987654321,
+        "created_at": "2026-07-07T12:00:00",
+    }
+
+    row = payment_to_sheet_row(payment)
+
+    assert len(row) == 8
+    assert row[0] == 1
+    assert row[1] == 123456789
+    assert row[2] == "+998901234567"
+    assert row[3] == "Ali Valiyev"
+    assert row[4] == 500000.0
+    assert row[5] == "Avans"
+    assert row[6] == 987654321
+    assert row[7] == "2026-07-07T12:00:00"
+
+
+def test_payment_to_sheet_row_note_none():
+    payment = {
+        "id": 2,
+        "telegram_id": 123,
+        "phone": "+998901234567",
+        "amount": 300000.0,
+        "created_by_admin_id": 987,
+        "created_at": "2026-07-07T12:00:00",
+    }
+
+    row = payment_to_sheet_row(payment)
+
+    assert row[0] == 2
+    assert row[5] == ""
+    assert row[6] == 987

@@ -1,12 +1,13 @@
 # Ombor Bot
 
-Muzlatgichli ombor uchun Telegram bot. Kirim/chiqim nazorati, mijozlar va mahsulotlarni boshqarish.
+Muzlatgichli ombor uchun Telegram bot. Kirim/chiqim nazorati, mijozlar va mahsulotlarni boshqarish, to'lov tizimi.
 
 ## Imkoniyatlar
 
 - Admin va mijoz rollari
 - Mijozlarni telefon raqam orqali ro'yxatga olish
 - Mahsulot qo'shish va chiqarish
+- To'lov kiritish va qarzdorlik hisobi
 - Google Sheets orqali hisobot
 
 ## Local o'rnatish
@@ -79,10 +80,12 @@ Telegram'dagi `request_contact=True` tugmasi orqali. Foydalanuvchi faqat o'z raq
 5. Bot mijozning telefon raqamini so'raydi
 6. Admin raqamni kiritadi, bot normalize qiladi va `users` jadvalidan qidiradi
 7. Agar mijoz topilmasa: "Avval mijoz botga /start bosib telefon raqamini ulashishi kerak"
-8. Agar mijoz topilsa: mahsulot nomi → kg miqdori → 1 kg narxi → saqlash muddati (kun) so'raladi
+8. Agar mijoz topilsa: mahsulot nomi → kg miqdori → 1 kg narxi → qutilar soni so'raladi
 9. Yakuniy hisobot ko'rsatiladi va tasdiqlash so'raladi
 10. "Ha ✅" bossa `products` jadvaliga yoziladi
 11. "Yo'q ❌" yoki "❌ Bekor qilish" bossa jarayon bekor qilinadi
+
+**Hisob-kitob:** Umumiy summa = kg × 1 kg narxi
 
 ## Client mahsulotlarni ko'rish
 
@@ -90,8 +93,13 @@ Telegram'dagi `request_contact=True` tugmasi orqali. Foydalanuvchi faqat o'z raq
 2. Bot Telegram ID orqali foydalanuvchini topadi
 3. Agar foydalanuvchi ro'yxatdan o'tmagan bo'lsa: "Avval /start orqali ro'yxatdan o'ting."
 4. `get_products_by_client_id()` orqali mahsulotlar olinadi
-5. Agar mahsulot yo'q bo'lsa: "Sizda hozircha mahsulot mavjud emas."
-6. Mahsulotlar chiroyli formatda ko'rsatiladi (10 tadan ko'p bo'lsa, qolgani haqida xabar chiqadi)
+5. `get_client_payment_summary()` orqali to'lov holati olinadi
+6. Agar mahsulot yo'q bo'lsa: "Sizda hozircha mahsulot mavjud emas."
+7. Mahsulotlar chiroyli formatda ko'rsatiladi
+8. Pastida to'lov holati:
+   - Jami to'lov
+   - To'langan
+   - Qolgan
 
 ### Admin /start ro'yxatdan o'tish
 
@@ -157,8 +165,9 @@ GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
 - Hech biri sozlanmagan bo'lsa, Sheets funksiyasi o'chiriladi (bot ishlashda davom etadi)
 - Admin mahsulot qo'shganda avval SQLite, keyin Google Sheets'ga yoziladi
 - Admin mahsulot chiqarganda avval SQLite (atomik transaction), keyin Google Sheets'ga yoziladi
+- Admin to'lov kiritganda avval SQLite, keyin Google Sheets'ga yoziladi
 - Agar Sheets'ga yozishda xatolik bo'lsa, SQLite'dagi ma'lumot saqlanadi va adminga xabar chiqadi
-- Sheet avtomatik tarzda "Kirim" va "Chiqim" varaqlarini yaratadi va headerlarni o'zi yozadi
+- Sheet avtomatik tarzda "Kirim", "Chiqim" va "To'lovlar" varaqlarini yaratadi va headerlarni o'zi yozadi
 
 ### Kirim sheet ustunlari
 
@@ -167,12 +176,11 @@ GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
 3. Ism
 4. Mahsulot nomi
 5. Kg miqdori
-6. 1 kg narxi
-7. Saqlash muddati (kun)
-8. Tugash sanasi (Yaratilgan sana + Saqlash muddati)
-9. Umumiy summa
-10. Status
-11. Yaratilgan sana
+6. Qutilar soni
+7. 1 kg narxi
+8. Umumiy summa
+9. Status
+10. Yaratilgan sana
 
 ### Chiqim sheet ustunlari
 
@@ -182,20 +190,23 @@ GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
 4. Ism
 5. Mahsulot nomi
 6. Kg miqdori
-7. 1 kg narxi
-8. Saqlash muddati (kun)
+7. Qutilar soni
+8. 1 kg narxi
 9. Umumiy summa
 10. Chiqim sanasi
 11. Admin Telegram ID
 12. Izoh
 
-## Admin: Muddat nazorati
+### To'lovlar sheet ustunlari
 
-1. Admin "⏰ Muddat nazorati" tugmasini bosadi
-2. Bot `get_expiring_products(days_ahead=3)` orqali faol mahsulotlarni tekshiradi
-3. `created_at + storage_days` hisoblanib, 3 kun ichida tugaydigan yoki muddati o'tgan mahsulotlar ko'rsatiladi
-4. Sort: eng oldin muddati o'tganlar, keyin eng tez tugaydiganlar
-5. Faqat `status='active'` mahsulotlar hisobga olinadi
+1. Payment ID
+2. Telegram ID
+3. Telefon raqam
+4. Ism
+5. To'lov summasi
+6. Izoh
+7. Admin Telegram ID
+8. Yaratilgan sana
 
 ## Admin: Mijozlar ro'yxati
 
@@ -226,6 +237,18 @@ GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
 - Chiqim va product status o'zgarishi **atomik transaction** bilan yoziladi
 - `exits` jadvalida `created_by_admin_id` va `note` ustunlari mavjud
 
+## Admin: To'lov kiritish
+
+1. Admin "💳 To'lov kiritish" tugmasini bosadi
+2. Bot mijozning telefon raqamini so'raydi
+3. Admin raqamni kiritadi, bot normalize qiladi va `users` jadvalidan qidiradi
+4. Agar mijoz topilsa, bot to'lov summasini so'raydi
+5. Admin summani kiritadi, so'ng izoh kiritadi yoki `-` yuboradi
+6. Yakuniy tasdiq so'raladi
+7. "Ha ✅" bossa:
+   - `payments` jadvaliga yoziladi
+   - Google Sheets'ga yoziladi
+
 ## Admin: Hisobot
 
 1. Admin "📊 Hisobot" tugmasini bosadi
@@ -234,7 +257,9 @@ GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
    - Jami mahsulot yozuvlari (barcha products)
    - Faol mahsulotlar (`status='active'`)
    - Faol kg jami (`active products` dagi `kg_amount` SUM)
-   - Umumiy summa (`active products` dagi `total_price` SUM)
+   - Umumiy summa (barcha products total_price SUM)
+   - To'langan (barcha payments amount SUM)
+   - Qolgan (umumiy summa - to'langan)
 
 3. Format:
 
@@ -246,9 +271,15 @@ Jami mahsulot yozuvlari: 25
 Faol mahsulotlar: 23
 Faol kg jami: 530.5 kg
 Umumiy summa: 4,500,000 so'm
+To'langan: 2,000,000 so'm
+Qolgan: 2,500,000 so'm
 ```
 
+## Qarzdorlik hisobi
 
+- **Jami qarz (mijoz bo'yicha):** mijozning active + exited barcha mahsulotlari `total_price` yig'indisi
+- **To'langan summa:** mijoz bo'yicha barcha `payments` amount yig'indisi
+- **Qolgan summa:** jami qarz - to'langan summa
 
 ## DB ni tekshirish
 
@@ -259,7 +290,12 @@ sqlite3 data/ombor_bot.sqlite3 "SELECT telegram_id, phone, full_name, username, 
 
 ### Mahsulotlar
 ```bash
-sqlite3 data/ombor_bot.sqlite3 "SELECT client_name, phone, product_name, kg_amount, price_per_kg, storage_days, total_price, status, created_at FROM products;"
+sqlite3 data/ombor_bot.sqlite3 "SELECT client_name, phone, product_name, kg_amount, price_per_kg, box_count, total_price, status, created_at FROM products;"
+```
+
+### To'lovlar
+```bash
+sqlite3 data/ombor_bot.sqlite3 "SELECT id, client_id, amount, note, created_at FROM payments;"
 ```
 
 ## Xavfsizlik

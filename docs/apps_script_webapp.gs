@@ -3,10 +3,10 @@
  *
  * Deployment:
  * 1. Google Sheet ochiladi
- * 2. Extensions → Apps Script
+ * 2. Extensions -> Apps Script
  * 3. Shu fayl kodini paste qilinadi
  * 4. SECRET o'zgartiriladi
- * 5. Deploy → New deployment → Web app
+ * 5. Deploy -> New deployment -> Web app
  *    - Execute as: Me
  *    - Who has access: Anyone
  * 6. URL .env ga yoziladi:
@@ -18,6 +18,7 @@ const SECRET = "CHANGE_ME_SECRET";
 
 const KIRIM_SHEET_NAME = "Kirim";
 const CHIQIM_SHEET_NAME = "Chiqim";
+const PAYMENT_SHEET_NAME = "To'lovlar";
 
 const KIRIM_HEADERS = [
   "Telegram ID",
@@ -25,9 +26,8 @@ const KIRIM_HEADERS = [
   "Ism",
   "Mahsulot nomi",
   "Kg miqdori",
+  "Qutilar soni",
   "1 kg narxi",
-  "Saqlash muddati (kun)",
-  "Tugash sanasi",
   "Umumiy summa",
   "Status",
   "Yaratilgan sana"
@@ -40,12 +40,23 @@ const CHIQIM_HEADERS = [
   "Ism",
   "Mahsulot nomi",
   "Kg miqdori",
+  "Qutilar soni",
   "1 kg narxi",
-  "Saqlash muddati (kun)",
   "Umumiy summa",
   "Chiqim sanasi",
   "Admin Telegram ID",
   "Izoh"
+];
+
+const PAYMENT_HEADERS = [
+  "Payment ID",
+  "Telegram ID",
+  "Telefon raqam",
+  "Ism",
+  "To'lov summasi",
+  "Izoh",
+  "Admin Telegram ID",
+  "Yaratilgan sana"
 ];
 
 function jsonOutput(obj) {
@@ -112,6 +123,11 @@ function doPost(e) {
 
     if (payload.action === "append_chiqim") {
       appendRow_(CHIQIM_SHEET_NAME, CHIQIM_HEADERS, payload.data);
+      return jsonOutput({ ok: true });
+    }
+
+    if (payload.action === "append_payment") {
+      appendRow_(PAYMENT_SHEET_NAME, PAYMENT_HEADERS, payload.data);
       return jsonOutput({ ok: true });
     }
 

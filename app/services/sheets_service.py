@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 KIRIM_SHEET_NAME = "Kirim"
 CHIQIM_SHEET_NAME = "Chiqim"
+PAYMENT_SHEET_NAME = "To'lovlar"
 
 KIRIM_HEADERS = [
     "Telegram ID",
@@ -19,9 +20,8 @@ KIRIM_HEADERS = [
     "Ism",
     "Mahsulot nomi",
     "Kg miqdori",
+    "Qutilar soni",
     "1 kg narxi",
-    "Saqlash muddati (kun)",
-    "Tugash sanasi",
     "Umumiy summa",
     "Status",
     "Yaratilgan sana",
@@ -34,44 +34,38 @@ CHIQIM_HEADERS = [
     "Ism",
     "Mahsulot nomi",
     "Kg miqdori",
+    "Qutilar soni",
     "1 kg narxi",
-    "Saqlash muddati (kun)",
     "Umumiy summa",
     "Chiqim sanasi",
     "Admin Telegram ID",
     "Izoh",
 ]
 
-
-def calculate_expire_date(created_at: str, storage_days: int) -> str:
-    if not created_at or not isinstance(storage_days, int):
-        return ""
-    try:
-        if "+" in created_at or created_at.endswith("Z"):
-            dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        else:
-            dt = datetime.fromisoformat(created_at)
-        expire = dt + timedelta(days=storage_days)
-        return expire.strftime("%Y-%m-%d")
-    except (ValueError, TypeError):
-        return ""
+PAYMENT_HEADERS = [
+    "Payment ID",
+    "Telegram ID",
+    "Telefon raqam",
+    "Ism",
+    "To'lov summasi",
+    "Izoh",
+    "Admin Telegram ID",
+    "Yaratilgan sana",
+]
 
 
 def product_to_sheet_row(product: dict[str, Any]) -> list[str | int | float]:
-    created_at = product.get("created_at", datetime.now(timezone.utc).isoformat())
-    storage_days = product.get("storage_days", 0)
     return [
         product.get("telegram_id", ""),
         product.get("phone", ""),
         product.get("client_name", ""),
         product.get("product_name", ""),
         product.get("kg_amount", 0),
+        product.get("box_count", 0),
         product.get("price_per_kg", 0),
-        storage_days,
-        calculate_expire_date(created_at, storage_days),
         product.get("total_price", 0),
         product.get("status", "active"),
-        created_at,
+        product.get("created_at", datetime.now(timezone.utc).isoformat()),
     ]
 
 
@@ -83,12 +77,25 @@ def exit_to_sheet_row(exit_data: dict[str, Any]) -> list[str | int | float]:
         exit_data.get("client_name", ""),
         exit_data.get("product_name", ""),
         exit_data.get("kg_amount", 0),
+        exit_data.get("box_count", 0),
         exit_data.get("price_per_kg", 0),
-        exit_data.get("storage_days", 0),
         exit_data.get("total_price", 0),
         exit_data.get("exited_at", datetime.now(timezone.utc).isoformat()),
         exit_data.get("created_by_admin_id", ""),
         exit_data.get("note", "") or "",
+    ]
+
+
+def payment_to_sheet_row(payment: dict[str, Any]) -> list[str | int | float]:
+    return [
+        payment.get("id", ""),
+        payment.get("telegram_id", ""),
+        payment.get("phone", ""),
+        payment.get("client_name", ""),
+        payment.get("amount", 0),
+        payment.get("note", "") or "",
+        payment.get("created_by_admin_id", ""),
+        payment.get("created_at", datetime.now(timezone.utc).isoformat()),
     ]
 
 
@@ -98,6 +105,7 @@ class SheetsService:
         self._client = None
         self._kirim_worksheet = None
         self._chiqim_worksheet = None
+        self._payment_worksheet = None
         self._ready = False
         self._script_mode = False
 
@@ -150,7 +158,8 @@ class SheetsService:
                 return
 
             for name, attr in [(KIRIM_SHEET_NAME, "_kirim_worksheet"),
-                               (CHIQIM_SHEET_NAME, "_chiqim_worksheet")]:
+                               (CHIQIM_SHEET_NAME, "_chiqim_worksheet"),
+                               (PAYMENT_SHEET_NAME, "_payment_worksheet")]:
                 try:
                     ws = sh.worksheet(name)
                 except gspread.WorksheetNotFound:
@@ -159,15 +168,16 @@ class SheetsService:
 
             self._ready = True
             await self._ensure_headers()
-            logger.info("Google Sheets ready (sheets: %s, %s)",
-                        KIRIM_SHEET_NAME, CHIQIM_SHEET_NAME)
+            logger.info("Google Sheets ready (sheets: %s, %s, %s)",
+                        KIRIM_SHEET_NAME, CHIQIM_SHEET_NAME, PAYMENT_SHEET_NAME)
         except Exception as e:
             self._ready = False
             logger.warning("Google Sheets init failed: %s", e)
 
     async def _ensure_headers(self):
         for ws, headers in [(self._kirim_worksheet, KIRIM_HEADERS),
-                            (self._chiqim_worksheet, CHIQIM_HEADERS)]:
+                            (self._chiqim_worksheet, CHIQIM_HEADERS),
+                            (self._payment_worksheet, PAYMENT_HEADERS)]:
             if not ws:
                 continue
             existing = ws.row_values(1)
@@ -229,6 +239,20 @@ class SheetsService:
             return True
         except Exception as e:
             logger.warning("Sheets append (Chiqim) failed: %s", e)
+            return False
+
+    async def append_payment_row(self, payment: dict[str, Any]) -> bool:
+        if self._script_mode:
+            row = payment_to_sheet_row(payment)
+            return await self._append_via_script("append_payment", row)
+        if not self._ready or not self._payment_worksheet:
+            return False
+        try:
+            row = payment_to_sheet_row(payment)
+            self._payment_worksheet.append_row(row, value_input_option="USER_ENTERED")
+            return True
+        except Exception as e:
+            logger.warning("Sheets append (To'lov) failed: %s", e)
             return False
 
 
