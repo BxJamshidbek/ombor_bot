@@ -1,6 +1,9 @@
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
+
+import aiohttp
 
 from app.config import config
 
@@ -77,8 +80,11 @@ class SheetsService:
         self._kirim_worksheet = None
         self._chiqim_worksheet = None
         self._ready = False
+        self._script_mode = False
 
     def is_configured(self) -> bool:
+        if config.google_script_webapp_url and config.google_script_secret:
+            return True
         if not self.sheets_id or self.sheets_id == "your_google_sheet_id_here":
             return False
         import os
@@ -86,6 +92,22 @@ class SheetsService:
         return bool(os.path.isfile(path))
 
     async def initialize(self):
+        if config.google_script_webapp_url and config.google_script_secret:
+            self._script_mode = True
+            self._ready = True
+            webapp_url = config.google_script_webapp_url.rstrip("/")
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(webapp_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        data = await resp.json()
+                        if data.get("ok"):
+                            logger.info("Google Sheets (Apps Script) ready at %s", webapp_url)
+                        else:
+                            logger.warning("Apps Script health check failed: %s", data)
+            except Exception as e:
+                logger.warning("Apps Script health check error: %s", e)
+            return
+
         if not self.is_configured():
             logger.info("Google Sheets not configured — skipping")
             return
@@ -134,7 +156,35 @@ class SheetsService:
             if not existing or all(cell == "" for cell in existing):
                 ws.append_row(headers, value_input_option="USER_ENTERED")
 
+    async def _append_via_script(self, action: str, row: list) -> bool:
+        if not self._ready:
+            return False
+        webapp_url = config.google_script_webapp_url.rstrip("/")
+        payload = {
+            "secret": config.google_script_secret,
+            "action": action,
+            "data": row,
+        }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    webapp_url,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    result = await resp.json()
+                    if result.get("ok"):
+                        return True
+                    logger.warning("Apps Script append failed: %s", result)
+                    return False
+        except Exception as e:
+            logger.warning("Apps Script request error: %s", e)
+            return False
+
     async def append_product_row(self, product: dict[str, Any]) -> bool:
+        if self._script_mode:
+            row = product_to_sheet_row(product)
+            return await self._append_via_script("append_kirim", row)
         if not self._ready or not self._kirim_worksheet:
             return False
         try:
@@ -146,6 +196,9 @@ class SheetsService:
             return False
 
     async def append_exit_row(self, exit_data: dict[str, Any]) -> bool:
+        if self._script_mode:
+            row = exit_to_sheet_row(exit_data)
+            return await self._append_via_script("append_chiqim", row)
         if not self._ready or not self._chiqim_worksheet:
             return False
         try:

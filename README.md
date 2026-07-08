@@ -116,35 +116,34 @@ Telegram ID'ni aniqlash uchun botga `/start` bosib, so'ngra https://t.me/userinf
 
 ## Google Sheets
 
-### Google Cloud'da service account yaratish
+Ombor Bot Google Sheets'ga yozish uchun ikki xil usulni qo'llab-quvvatlaydi:
 
-1. [Google Cloud Console](https://console.cloud.google.com/) ga o'ting
-2. Loyiha yarating yoki mavjud loyihani tanlang
-3. "APIs & Services" → "Credentials" ga o'ting
-4. "Create Credentials" → "Service Account" ni tanlang
-5. Service account nomini kiriting va yarating
-6. Yaratilgandan keyin "Keys" → "Add Key" → "JSON" ni tanlang
-7. Yuklab olingan JSON faylni `credentials/service_account.json` ga nomlab saqlang
-8. Google Sheets API ni yoqing: "APIs & Services" → "Library" → "Google Sheets API" → "Enable"
-9. Google Drive API ni ham yoqing
+1. **Google Apps Script Web App** (tavsiya etiladi) — hech qanday API sozlamalari kerak emas
+2. **Service Account** (murakkab) — Google Cloud Console talab qiladi
 
-### Google Sheets ID qayerdan olinadi
+Ikkala usulda ham bot ishlaganda Sheets'ga yozishda xatolik bo'lsa, SQLite'dagi ma'lumot saqlanadi va adminga xabar chiqadi.
 
-Google Sheet URL'ida:
-```
-https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit
-```
-`SPREADSHEET_ID` qismi — bu sizning Sheet ID'ingiz.
+### Tavsiya: Google Apps Script Web App
 
-### Service account'ni Sheet'ga qo'shish
-
-1. Service account JSON faylini oching va `client_email` qiymatini nusxalang
-2. Google Sheet'ingizni oching
-3. "Share" (Ulashish) tugmasini bosing
-4. Service account email'ini qo'shing va "Editor" (Muharrir) rolini bering
+1. Google Sheet'ingizni oching
+2. **Extensions** → **Apps Script** ga o'ting
+3. `docs/apps_script_webapp.gs` faylidagi kodni paste qiling
+4. Kod ichidagi `SECRET` qiymatini o'zgartiring (masalan `const SECRET = "my_secret_key_123"`)
+5. **Deploy** → **New deployment** → **Web app** ni tanlang
+   - Execute as: **Me**
+   - Who has access: **Anyone**
+6. **Deploy** tugmasini bosing
+7. Chiqgan Web App URL (`https://script.google.com/...`) ni nusxalang
 
 ### .env sozlamalari
 
+Apps Script uchun:
+```
+GOOGLE_SCRIPT_WEBAPP_URL=https://script.google.com/macros/s/.../exec
+GOOGLE_SCRIPT_SECRET=my_secret_key_123
+```
+
+Service Account uchun:
 ```
 GOOGLE_SHEETS_ID=your_google_sheet_id_here
 GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
@@ -153,13 +152,13 @@ GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service_account.json
 ### Bot qanday ishlaydi
 
 - Bot start bo'lganda `SheetsService.initialize()` chaqiriladi
-- Agar credentials topilmasa, Sheets funksiyasi o'chiriladi (bot ishlashda davom etadi)
+- Agar `GOOGLE_SCRIPT_WEBAPP_URL` va `GOOGLE_SCRIPT_SECRET` sozlangan bo'lsa → **Apps Script** mode
+- Agar yuqoridagilar bo'lmasa va Service Account JSON fayli mavjud bo'lsa → **Service Account** mode
+- Hech biri sozlanmagan bo'lsa, Sheets funksiyasi o'chiriladi (bot ishlashda davom etadi)
 - Admin mahsulot qo'shganda avval SQLite, keyin Google Sheets'ga yoziladi
 - Admin mahsulot chiqarganda avval SQLite (atomik transaction), keyin Google Sheets'ga yoziladi
 - Agar Sheets'ga yozishda xatolik bo'lsa, SQLite'dagi ma'lumot saqlanadi va adminga xabar chiqadi
 - Sheet avtomatik tarzda "Kirim" va "Chiqim" varaqlarini yaratadi va headerlarni o'zi yozadi
-
-**Muhim:** Service account JSON faylini **hech qachon** gitga push qilmang. U `.gitignore` orqali chiqarib tashlangan.
 
 ### Kirim sheet ustunlari
 

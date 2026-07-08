@@ -23,6 +23,12 @@ class Config:
             "GOOGLE_SERVICE_ACCOUNT_FILE", "credentials/service_account.json"
         )
     )
+    google_script_webapp_url: str = field(
+        default_factory=lambda: os.getenv("GOOGLE_SCRIPT_WEBAPP_URL", "")
+    )
+    google_script_secret: str = field(
+        default_factory=lambda: os.getenv("GOOGLE_SCRIPT_SECRET", "")
+    )
 
     def __post_init__(self):
         raw_admin_ids = os.getenv("ADMIN_IDS", "")
