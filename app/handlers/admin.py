@@ -624,64 +624,87 @@ async def payment_product_select(message: Message, state: FSMContext):
         await cancel_flow(message, state)
         return
 
-    data = await state.get_data()
     try:
-        product_id = int(text)
-    except ValueError:
+        data = await state.get_data()
+        logger.info(
+            "Payment product id received: user_id=%s text=%s state=%s",
+            message.from_user.id, text, data,
+        )
+
+        try:
+            product_id = int(text)
+        except ValueError:
+            await message.answer(
+                "Mahsulot ID raqam bo'lishi kerak.",
+                reply_markup=cancel_kb(),
+            )
+            return
+
+        available_ids = [p["id"] for p in data.get("products", [])]
+        if product_id not in available_ids:
+            await message.answer(
+                "Bu mahsulot ro'yxatda yo'q yoki Ombor sheetda mavjud emas.",
+                reply_markup=cancel_kb(),
+            )
+            return
+
+        product = await get_product_by_id(product_id)
+        if product is None:
+            await message.answer(
+                "Bu ID bilan mahsulot topilmadi. Qaytadan kiriting:",
+                reply_markup=cancel_kb(),
+            )
+            return
+
+        if product["status"] != "active":
+            await message.answer(
+                "Bu mahsulot allaqachon chiqim qilingan yoki faol emas. Boshqa ID kiriting:",
+                reply_markup=cancel_kb(),
+            )
+            return
+
+        summary = await get_product_payment_summary(product_id)
+        paid = summary["paid_amount"]
+        rem = summary["remaining_amount"]
+
+        logger.info(
+            "Payment product selected: product_id=%s client_id=%s remaining=%s",
+            product_id, data.get("client_id"), rem,
+        )
+
+        if rem <= 0:
+            await message.answer(
+                "Bu mahsulot uchun to'lov to'liq qilingan. Boshqa mahsulot tanlang.",
+                reply_markup=cancel_kb(),
+            )
+            return
+
+        await state.update_data(
+            selected_product_id=product["id"],
+            selected_product_name=product["product_name"],
+            selected_total=product["total_price"],
+            selected_paid=paid,
+            selected_remaining=rem,
+        )
+
+        await state.set_state(AdminAddPayment.waiting_for_amount)
         await message.answer(
-            "Noto'g'ri ID. Mahsulot ID sini raqam ko'rinishida kiriting:",
+            f"✅ Tanlangan mahsulot:\n\n"
+            f"<b>ID:</b> {product['id']}\n"
+            f"<b>Mahsulot:</b> {product['product_name']}\n"
+            f"<b>Umumiy summa:</b> {product['total_price']:,.0f} so'm\n"
+            f"<b>To'langan:</b> {paid:,.0f} so'm\n"
+            f"<b>Qolgan:</b> {rem:,.0f} so'm\n\n"
+            f"To'lov summasini kiriting:",
             reply_markup=cancel_kb(),
         )
-        return
-
-    product = await get_product_by_id(product_id)
-    if product is None:
+    except Exception:
+        logger.exception("Payment product id handler failed")
         await message.answer(
-            "Bu ID bilan mahsulot topilmadi. Qaytadan kiriting:",
-            reply_markup=cancel_kb(),
+            "Xatolik yuz berdi. Qayta urinib ko'ring.",
+            reply_markup=admin_panel_kb(),
         )
-        return
-
-    if product["status"] != "active":
-        await message.answer(
-            "Bu mahsulot allaqachon chiqim qilingan yoki faol emas. Boshqa ID kiriting:",
-            reply_markup=cancel_kb(),
-        )
-        return
-
-    if product["phone"] != data["client_phone"]:
-        await message.answer(
-            "Bu mahsulot ushbu mijozga tegishli emas. Boshqa ID kiriting:",
-            reply_markup=cancel_kb(),
-        )
-        return
-
-    summary = await get_product_payment_summary(product_id)
-    paid = summary["paid_amount"]
-    rem = summary["remaining_amount"]
-
-    if rem <= 0:
-        await message.answer(
-            "Bu mahsulot uchun to'lov to'liq qilingan.",
-            reply_markup=cancel_kb(),
-        )
-        return
-
-    await state.update_data(
-        selected_product_id=product["id"],
-        selected_product_name=product["product_name"],
-        selected_total=product["total_price"],
-        selected_paid=paid,
-        selected_remaining=rem,
-    )
-
-    await state.set_state(AdminAddPayment.waiting_for_amount)
-    await message.answer(
-        f"Bu mahsulot bo'yicha qolgan summa: <b>{rem:,.0f} so'm</b>\n\n"
-        f"To'lov summasini kiriting:\n\n"
-        f"Masalan: {rem:,.0f}",
-        reply_markup=cancel_kb(),
-    )
+        await state.clear()
 
 
 @router.message(AdminAddPayment.waiting_for_amount, F.text)
