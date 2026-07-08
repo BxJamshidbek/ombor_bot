@@ -11,13 +11,14 @@ from app.database import (
     create_product,
     create_payment,
     exit_product,
-    get_active_products_for_client,
     get_admin_stats,
     get_all_clients,
     get_payment_by_id,
     get_product_by_id,
     get_product_payment_summary,
     get_user_by_phone,
+    mark_product_in_ombor_sheet,
+    get_sheet_visible_active_products_by_client_id,
 )
 from app.services.calculation_service import (
     calculate_total_price,
@@ -267,6 +268,7 @@ async def add_product_confirm(message: Message, state: FSMContext):
                     sheets_ok = False
 
             if sheets_ok:
+                await mark_product_in_ombor_sheet(product_id, True)
                 await message.answer(
                     "Mahsulot bazaga va Google Sheets'ga saqlandi ✅",
                     reply_markup=admin_panel_kb(),
@@ -371,7 +373,7 @@ async def exit_product_client_phone(message: Message, state: FSMContext):
         )
         return
 
-    products = await get_active_products_for_client(user["id"])
+    products = await get_sheet_visible_active_products_by_client_id(user["id"])
     if not products:
         await message.answer(
             "Bu mijozda faol mahsulotlar mavjud emas.",
@@ -585,7 +587,7 @@ async def payment_client_phone(message: Message, state: FSMContext):
         )
         return
 
-    products = await get_active_products_for_client(user["id"])
+    products = await get_sheet_visible_active_products_by_client_id(user["id"])
     if not products:
         await message.answer(
             "Bu mijozda omborda aktiv mahsulot yo'q.",

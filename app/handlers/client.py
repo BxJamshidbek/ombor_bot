@@ -4,6 +4,7 @@ from aiogram.types import Message
 from app.database import (
     get_client_active_payment_summary,
     get_products_by_client_id_asc,
+    get_sheet_visible_active_products_by_client_id,
     get_user_by_telegram_id,
 )
 from app.services.calculation_service import allocate_payments_to_products
@@ -20,7 +21,7 @@ async def my_products(message: Message):
         await message.answer("Avval /start orqali ro'yxatdan o'ting.")
         return
 
-    products = await get_products_by_client_id_asc(user["id"])
+    products = await get_sheet_visible_active_products_by_client_id(user["id"])
     summary = await get_client_active_payment_summary(user["id"])
 
     allocation = {}

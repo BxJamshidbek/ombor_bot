@@ -87,6 +87,10 @@ async def init_db() -> None:
             await conn.execute(
                 "ALTER TABLE products ADD COLUMN box_count INTEGER NOT NULL DEFAULT 0"
             )
+        if "is_in_ombor_sheet" not in existing_prod_cols:
+            await conn.execute(
+                "ALTER TABLE products ADD COLUMN is_in_ombor_sheet INTEGER NOT NULL DEFAULT 0"
+            )
 
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS payments (
@@ -329,7 +333,7 @@ async def get_admin_stats() -> dict:
         total_products = (await cursor.fetchone())["cnt"]
 
         cursor = await conn.execute(
-            "SELECT COUNT(*) as cnt FROM products WHERE status = 'active'"
+            "SELECT COUNT(*) as cnt FROM products WHERE status = 'active' AND is_in_ombor_sheet = 1"
         )
         active_products = (await cursor.fetchone())["cnt"]
 
@@ -366,6 +370,31 @@ async def get_active_products_for_client(client_id: int) -> list[dict]:
     try:
         cursor = await conn.execute(
             "SELECT * FROM products WHERE client_id = ? AND status = 'active' ORDER BY created_at ASC",
+            (client_id,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        await conn.close()
+
+
+async def mark_product_in_ombor_sheet(product_id: int, value: bool = True) -> None:
+    conn = await get_connection()
+    try:
+        await conn.execute(
+            "UPDATE products SET is_in_ombor_sheet = ? WHERE id = ?",
+            (1 if value else 0, product_id),
+        )
+        await conn.commit()
+    finally:
+        await conn.close()
+
+
+async def get_sheet_visible_active_products_by_client_id(client_id: int) -> list[dict]:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT * FROM products WHERE client_id = ? AND status = 'active' AND is_in_ombor_sheet = 1 ORDER BY created_at ASC",
             (client_id,),
         )
         rows = await cursor.fetchall()
