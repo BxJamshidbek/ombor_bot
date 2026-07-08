@@ -186,6 +186,7 @@ class SheetsService:
 
     async def _append_via_script(self, action: str, row: list) -> bool:
         if not self._ready:
+            logger.warning("Append via script skipped: not ready")
             return False
         webapp_url = config.google_script_webapp_url.rstrip("/")
         payload = {
@@ -193,10 +194,12 @@ class SheetsService:
             "action": action,
             "data": row,
         }
+        logger.info("Apps Script POST: action=%s url=%s", action, webapp_url)
         try:
             resp = await asyncio.to_thread(
-                requests.post, webapp_url, json=payload, timeout=15
+                requests.post, webapp_url, json=payload, timeout=5
             )
+            logger.info("Apps Script response: status=%s", resp.status_code)
             if resp.status_code != 200:
                 logger.warning("Apps Script HTTP %s: %s", resp.status_code, resp.text[:200])
                 return False
@@ -205,17 +208,19 @@ class SheetsService:
             except ValueError:
                 logger.warning("Apps Script non-JSON response: %s", resp.text[:300])
                 return False
+            logger.info("Apps Script result: %s", result)
             if result.get("ok"):
                 return True
             logger.warning("Apps Script append failed: %s", result)
             return False
         except Exception as e:
-            logger.warning("Apps Script request error: %s", e)
+            logger.exception("Apps Script request error: %s", e)
             return False
 
     async def append_product_row(self, product: dict[str, Any]) -> bool:
         if self._script_mode:
             row = product_to_sheet_row(product)
+            logger.info("Appending product to Kirim: %s", row[:4])
             return await self._append_via_script("append_kirim", row)
         if not self._ready or not self._kirim_worksheet:
             return False
@@ -230,6 +235,7 @@ class SheetsService:
     async def append_exit_row(self, exit_data: dict[str, Any]) -> bool:
         if self._script_mode:
             row = exit_to_sheet_row(exit_data)
+            logger.info("Appending exit to Chiqim: product_id=%s", exit_data.get("product_id"))
             return await self._append_via_script("append_chiqim", row)
         if not self._ready or not self._chiqim_worksheet:
             return False
@@ -242,6 +248,19 @@ class SheetsService:
             return False
 
     async def append_payment_row(self, payment: dict[str, Any]) -> bool:
+        if self._script_mode:
+            row = payment_to_sheet_row(payment)
+            logger.info("Appending payment to To'lovlar: payment_id=%s", payment.get("id"))
+            return await self._append_via_script("append_payment", row)
+        if not self._ready or not self._payment_worksheet:
+            return False
+        try:
+            row = payment_to_sheet_row(payment)
+            self._payment_worksheet.append_row(row, value_input_option="USER_ENTERED")
+            return True
+        except Exception as e:
+            logger.warning("Sheets append (To'lov) failed: %s", e)
+            return False
         if self._script_mode:
             row = payment_to_sheet_row(payment)
             return await self._append_via_script("append_payment", row)

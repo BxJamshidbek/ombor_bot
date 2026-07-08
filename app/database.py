@@ -179,8 +179,8 @@ async def create_product(
             """
             INSERT INTO products
                 (client_id, telegram_id, phone, client_name, product_name,
-                 kg_amount, price_per_kg, total_price, box_count, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 kg_amount, price_per_kg, storage_days, total_price, box_count, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
             """,
             (client_id, telegram_id, phone, client_name, product_name,
              kg_amount, price_per_kg, total_price, box_count, now),

@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from datetime import datetime, timezone
+import logging
 
 from app.config import config
 from app.database import (
@@ -31,6 +32,8 @@ from app.utils.validators import (
     validate_positive_int,
     validate_quantity,
 )
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -227,43 +230,57 @@ async def add_product_confirm(message: Message, state: FSMContext):
         return
 
     if text == "Ha ✅":
-        data = await state.get_data()
-        await create_product(
-            client_id=data["client_id"],
-            telegram_id=data["telegram_id"],
-            phone=data["phone"],
-            client_name=data["client_name"],
-            product_name=data["product_name"],
-            kg_amount=data["kg_amount"],
-            price_per_kg=data["price_per_kg"],
-            box_count=data["box_count"],
-            total_price=data["total_price"],
-        )
+        try:
+            data = await state.get_data()
+            logger.info("Product confirm started: client_id=%s product_name=%s",
+                        data.get("client_id"), data.get("product_name"))
+            product_id = await create_product(
+                client_id=data["client_id"],
+                telegram_id=data["telegram_id"],
+                phone=data["phone"],
+                client_name=data["client_name"],
+                product_name=data["product_name"],
+                kg_amount=data["kg_amount"],
+                price_per_kg=data["price_per_kg"],
+                box_count=data["box_count"],
+                total_price=data["total_price"],
+            )
+            logger.info("Product created id=%s", product_id)
 
-        product = {
-            **data,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "status": "active",
-        }
-        await state.clear()
+            product_data = {
+                **data,
+                "id": product_id,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "status": "active",
+            }
 
-        if not sheets_service.is_configured():
+            sheets_ok = False
+            if sheets_service.is_configured():
+                try:
+                    sheets_ok = await sheets_service.append_product_row(product_data)
+                except Exception:
+                    logger.exception("Sheets append crashed")
+                    sheets_ok = False
+
+            if sheets_ok:
+                await message.answer(
+                    "Mahsulot bazaga va Google Sheets'ga saqlandi ✅",
+                    reply_markup=admin_panel_kb(),
+                )
+            else:
+                await message.answer(
+                    "Mahsulot SQLite bazaga saqlandi ✅, "
+                    "lekin Google Sheets'ga yozishda xatolik bo'ldi ⚠️",
+                    reply_markup=admin_panel_kb(),
+                )
+        except Exception:
+            logger.exception("Product confirm failed")
             await message.answer(
-                "Mahsulot SQLite bazaga saqlandi ✅. "
-                "Google Sheets sozlanmagan, shuning uchun Sheets'ga yozilmadi.",
+                "Mahsulot saqlashda xatolik bo'ldi ❌",
                 reply_markup=admin_panel_kb(),
             )
-        elif await sheets_service.append_product_row(product):
-            await message.answer(
-                "Mahsulot bazaga saqlandi ✅",
-                reply_markup=admin_panel_kb(),
-            )
-        else:
-            await message.answer(
-                "Mahsulot SQLite bazaga saqlandi ✅, "
-                "lekin Google Sheets'ga yozishda xatolik bo'ldi ⚠️",
-                reply_markup=admin_panel_kb(),
-            )
+        finally:
+            await state.clear()
 
     elif text == "Yo'q ❌":
         await state.clear()
@@ -467,36 +484,47 @@ async def exit_product_confirm(message: Message, state: FSMContext):
         return
 
     if text == "Ha ✅":
-        data = await state.get_data()
-        exit_data = await exit_product(
-            product_id=data["selected_product_id"],
-            admin_id=message.from_user.id,
-            note=data.get("note"),
-        )
+        try:
+            data = await state.get_data()
+            exit_data = await exit_product(
+                product_id=data["selected_product_id"],
+                admin_id=message.from_user.id,
+                note=data.get("note"),
+            )
 
-        await state.clear()
-        if exit_data is None:
+            if exit_data is None:
+                await message.answer(
+                    "Chiqim qilishda xatolik bo'ldi yoki mahsulot allaqachon chiqim qilingan.",
+                    reply_markup=admin_panel_kb(),
+                )
+            else:
+                sheets_ok = False
+                if sheets_service.is_configured():
+                    try:
+                        sheets_ok = await sheets_service.append_exit_row(exit_data)
+                    except Exception:
+                        logger.exception("Sheets append exit crashed")
+                        sheets_ok = False
+
+                if sheets_ok:
+                    await message.answer(
+                        "Mahsulot chiqim qilindi ✅",
+                        reply_markup=admin_panel_kb(),
+                    )
+                else:
+                    await message.answer(
+                        "Mahsulot SQLite bazada chiqim qilindi ✅, "
+                        "lekin Google Sheets'ga yozishda xatolik bo'ldi ⚠️",
+                        reply_markup=admin_panel_kb(),
+                    )
+        except Exception:
+            logger.exception("Exit confirm failed")
             await message.answer(
-                "Chiqim qilishda xatolik bo'ldi yoki mahsulot allaqachon chiqim qilingan.",
+                "Chiqimda xatolik bo'ldi ❌",
                 reply_markup=admin_panel_kb(),
             )
-        elif not sheets_service.is_configured():
-            await message.answer(
-                "Mahsulot chiqim qilindi ✅. "
-                "Google Sheets sozlanmagan, shuning uchun Sheets'ga yozilmadi.",
-                reply_markup=admin_panel_kb(),
-            )
-        elif await sheets_service.append_exit_row(exit_data):
-            await message.answer(
-                "Mahsulot chiqim qilindi ✅",
-                reply_markup=admin_panel_kb(),
-            )
-        else:
-            await message.answer(
-                "Mahsulot SQLite bazada chiqim qilindi ✅, "
-                "lekin Google Sheets'ga yozishda xatolik bo'ldi ⚠️",
-                reply_markup=admin_panel_kb(),
-            )
+        finally:
+            await state.clear()
 
     elif text == "Yo'q ❌":
         await state.clear()
@@ -628,40 +656,51 @@ async def payment_confirm(message: Message, state: FSMContext):
         return
 
     if text == "Ha ✅":
-        data = await state.get_data()
-        payment = await create_payment(
-            client_id=data["client_id"],
-            telegram_id=data["telegram_id"],
-            phone=data["phone"],
-            client_name=data["client_name"],
-            amount=data["amount"],
-            created_by_admin_id=message.from_user.id,
-            note=data.get("note"),
-        )
+        try:
+            data = await state.get_data()
+            payment = await create_payment(
+                client_id=data["client_id"],
+                telegram_id=data["telegram_id"],
+                phone=data["phone"],
+                client_name=data["client_name"],
+                amount=data["amount"],
+                created_by_admin_id=message.from_user.id,
+                note=data.get("note"),
+            )
 
-        await state.clear()
-        if payment is None:
+            if payment is None:
+                await message.answer(
+                    "To'lovni saqlashda xatolik bo'ldi.",
+                    reply_markup=admin_panel_kb(),
+                )
+            else:
+                sheets_ok = False
+                if sheets_service.is_configured():
+                    try:
+                        sheets_ok = await sheets_service.append_payment_row(payment)
+                    except Exception:
+                        logger.exception("Sheets append payment crashed")
+                        sheets_ok = False
+
+                if sheets_ok:
+                    await message.answer(
+                        "To'lov bazaga va Google Sheets'ga saqlandi ✅",
+                        reply_markup=admin_panel_kb(),
+                    )
+                else:
+                    await message.answer(
+                        "To'lov SQLite bazaga saqlandi ✅, "
+                        "lekin Google Sheets'ga yozishda xatolik bo'ldi ⚠️",
+                        reply_markup=admin_panel_kb(),
+                    )
+        except Exception:
+            logger.exception("Payment confirm failed")
             await message.answer(
-                "To'lovni saqlashda xatolik bo'ldi.",
+                "To'lov saqlashda xatolik bo'ldi ❌",
                 reply_markup=admin_panel_kb(),
             )
-        elif not sheets_service.is_configured():
-            await message.answer(
-                "To'lov bazaga saqlandi ✅. "
-                "Google Sheets sozlanmagan, shuning uchun Sheets'ga yozilmadi.",
-                reply_markup=admin_panel_kb(),
-            )
-        elif await sheets_service.append_payment_row(payment):
-            await message.answer(
-                "To'lov bazaga saqlandi ✅",
-                reply_markup=admin_panel_kb(),
-            )
-        else:
-            await message.answer(
-                "To'lov bazaga saqlandi ✅, "
-                "lekin Google Sheets'ga yozishda xatolik bo'ldi ⚠️",
-                reply_markup=admin_panel_kb(),
-            )
+        finally:
+            await state.clear()
 
     elif text == "Yo'q ❌":
         await state.clear()
