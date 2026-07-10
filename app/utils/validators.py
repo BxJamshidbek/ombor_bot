@@ -1,3 +1,4 @@
+import math
 import re
 
 
@@ -36,3 +37,25 @@ def validate_positive_int(value: str) -> int | None:
         return num
     except (ValueError, TypeError):
         return None
+
+
+def validate_full_name(name: str) -> str | None:
+    if not name:
+        return None
+    cleaned = re.sub(r"\s+", " ", name.strip())
+    if len(cleaned) < 2 or len(cleaned) > 100:
+        return None
+    return cleaned
+
+
+def validate_coordinates(latitude: float, longitude: float) -> bool:
+    return (
+        math.isfinite(latitude)
+        and math.isfinite(longitude)
+        and -90 <= latitude <= 90
+        and -180 <= longitude <= 180
+    )
+
+
+def build_google_maps_url(latitude: float, longitude: float) -> str:
+    return f"https://www.google.com/maps?q={latitude:.7f},{longitude:.7f}"

@@ -6,10 +6,12 @@ from app.database import (
     get_products_by_client_id_asc,
     get_sheet_visible_active_products_by_client_id,
     get_user_by_telegram_id,
+    get_warehouse_location,
 )
 from app.services.calculation_service import allocate_payments_to_products
 from app.keyboards import main_menu_kb
 from app.services.formatting_service import format_product_list
+from app.utils.validators import build_google_maps_url
 
 router = Router()
 
@@ -47,10 +49,10 @@ async def help_handler(message: Message):
         text = (
             "🤖 <b>Ombor boti — Admin yordam</b>\n\n"
             "/admin - Admin panel\n"
-            "➕ Mahsulot qo'shish - Mijozga mahsulot qo'shish\n"
-            "💳 To'lov kiritish - Mijoz to'lovini kiritish\n"
-            "📋 Mijozlarni ko'rish - Mijozlar ro'yxati\n"
-            "📊 Hisobot - Hisobot\n\n"
+            "📋 Mijozlarni ko'rish - Ro'yxatdan o'tgan mijozlar ro'yxati\n"
+            "📊 Hisobot - Ombor hisoboti\n\n"
+            "Mahsulot qo'shish, to'lov kiritish va chiqarish faqat "
+            "📋 Mijozlarni ko'rish orqali tanlangan mijoz ichidan amalga oshiriladi.\n\n"
             "Mijozlarga /start bosib ro'yxatdan o'tishni tavsiya eting."
         )
     else:
@@ -62,3 +64,36 @@ async def help_handler(message: Message):
         )
 
     await message.answer(text, reply_markup=main_menu_kb(role))
+
+
+@router.message(F.text == "📍 Ombor lokatsiyasi")
+async def warehouse_location(message: Message):
+    user = await get_user_by_telegram_id(message.from_user.id)
+    if user is None:
+        await message.answer("Avval /start orqali ro'yxatdan o'ting.")
+        return
+
+    location = await get_warehouse_location()
+    if location is None:
+        await message.answer(
+            "Ombor lokatsiyasi hali admin tomonidan sozlanmagan.",
+            reply_markup=main_menu_kb(user["role"]),
+        )
+        return
+
+    latitude = location["warehouse_latitude"]
+    longitude = location["warehouse_longitude"]
+    name = location.get("warehouse_location_name")
+    maps_url = build_google_maps_url(latitude, longitude)
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗺 Google Maps'da ochish", url=maps_url)]
+    ])
+
+    await message.answer_location(latitude=latitude, longitude=longitude)
+    display_name = name if name else "Ombor lokatsiyasi"
+    await message.answer(
+        f"📍 <b>{display_name}</b>\n\nQuyidagi tugmani bosib Google Maps'da ochishingiz mumkin.",
+        reply_markup=kb,
+    )

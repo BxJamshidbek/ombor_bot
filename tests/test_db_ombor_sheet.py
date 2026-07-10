@@ -15,6 +15,7 @@ from app.database import (
     get_active_products_for_client,
     get_admin_stats,
     get_product_by_id,
+    get_user_by_id,
     exit_product,
     create_payment,
     DATABASE_PATH,
@@ -22,7 +23,7 @@ from app.database import (
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def setup_module():
@@ -237,3 +238,34 @@ def test_stats_empty_ombor():
     assert stats["active_total_amount"] == 0
     assert stats["active_paid_amount"] == 0
     assert stats["active_remaining_amount"] == 0
+
+
+def test_get_user_by_id_returns_existing():
+    client_id = _create_client()
+    user = _run(get_user_by_id(client_id))
+    assert user is not None
+    assert user["id"] == client_id
+    assert user["role"] == "client"
+
+
+def test_get_user_by_id_missing_returns_none():
+    user = _run(get_user_by_id(999999))
+    assert user is None
+
+
+def test_create_user_stores_full_name():
+    from app.database import get_user_by_telegram_id
+
+    _create_client()
+    new_id = _counter + 1
+    _run(create_user(
+        telegram_id=new_id,
+        phone="+998909999888",
+        full_name="Ali Valiyev",
+        username="ali_v",
+        role="client",
+    ))
+    user = _run(get_user_by_telegram_id(new_id))
+    assert user is not None
+    assert user["full_name"] == "Ali Valiyev"
+    assert user["phone"] == "+998909999888"

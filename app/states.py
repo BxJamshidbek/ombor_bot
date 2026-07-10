@@ -3,6 +3,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 class Registration(StatesGroup):
     waiting_for_phone = State()
+    waiting_for_name = State()
 
 
 class AdminAddProduct(StatesGroup):
@@ -24,4 +25,13 @@ class AdminAddPayment(StatesGroup):
     waiting_for_client_phone = State()
     waiting_for_product_id = State()
     waiting_for_amount = State()
+    waiting_for_confirmation = State()
+
+
+class AdminSettings(StatesGroup):
+    waiting_for_product_type_name = State()
+
+
+class AdminWarehouseLocation(StatesGroup):
+    waiting_for_location = State()
     waiting_for_confirmation = State()

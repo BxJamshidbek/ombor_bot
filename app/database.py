@@ -115,6 +115,26 @@ async def init_db() -> None:
                 "ALTER TABLE payments ADD COLUMN product_id INTEGER"
             )
 
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS product_types (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                emoji TEXT NOT NULL DEFAULT '📦',
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            )
+        """)
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at TEXT
+            )
+        """)
+
+        await seed_default_product_types(conn)
+
         await conn.commit()
     finally:
         await conn.close()
@@ -126,6 +146,19 @@ async def get_user_by_telegram_id(telegram_id: int) -> dict | None:
         cursor = await conn.execute(
             "SELECT * FROM users WHERE telegram_id = ?",
             (telegram_id,),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await conn.close()
+
+
+async def get_user_by_id(user_id: int) -> dict | None:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT * FROM users WHERE id = ?",
+            (user_id,),
         )
         row = await cursor.fetchone()
         return dict(row) if row else None
@@ -165,6 +198,9 @@ async def create_user(
         )
         await conn.commit()
         return cursor.lastrowid
+    except Exception:
+        await conn.rollback()
+        raise
     finally:
         await conn.close()
 
@@ -543,5 +579,167 @@ async def get_payment_by_id(payment_id: int) -> dict | None:
         )
         row = await cursor.fetchone()
         return dict(row) if row else None
+    finally:
+        await conn.close()
+
+
+async def seed_default_product_types(conn: aiosqlite.Connection | None = None) -> None:
+    own_conn = False
+    if conn is None:
+        conn = await get_connection()
+        own_conn = True
+    try:
+        cur = await conn.execute("SELECT COUNT(*) as c FROM product_types")
+        row = await cur.fetchone()
+        if row["c"] == 0:
+            now = datetime.now(timezone.utc).isoformat()
+            defaults = [
+                ("Olma", "🍎", now),
+                ("Nok", "🍐", now),
+            ]
+            for name, emoji, t in defaults:
+                try:
+                    await conn.execute(
+                        "INSERT INTO product_types (name, emoji, created_at) VALUES (?, ?, ?)",
+                        (name, emoji, t),
+                    )
+                except Exception:
+                    pass
+            await conn.commit()
+    finally:
+        if own_conn:
+            await conn.close()
+
+
+async def get_active_product_types() -> list[dict]:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT * FROM product_types WHERE is_active = 1 ORDER BY created_at ASC"
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        await conn.close()
+
+
+async def get_product_type_by_name(name: str) -> dict | None:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT * FROM product_types WHERE name = ?", (name.strip(),)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await conn.close()
+
+
+async def create_product_type(name: str) -> int | None:
+    cleaned = name.strip()
+    existing = await get_product_type_by_name(cleaned)
+    if existing is not None:
+        return None
+    conn = await get_connection()
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        cursor = await conn.execute(
+            "INSERT INTO product_types (name, emoji, created_at) VALUES (?, '📦', ?)",
+            (cleaned, now),
+        )
+        await conn.commit()
+        return cursor.lastrowid
+    except Exception:
+        await conn.rollback()
+        return None
+    finally:
+        await conn.close()
+
+
+async def get_product_type_by_id(type_id: int) -> dict | None:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT * FROM product_types WHERE id = ?", (type_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await conn.close()
+
+
+async def set_setting(key: str, value: str) -> None:
+    conn = await get_connection()
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        await conn.execute(
+            "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            (key, value, now),
+        )
+        await conn.commit()
+    finally:
+        await conn.close()
+
+
+async def get_setting(key: str) -> str | None:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT value FROM settings WHERE key = ?",
+            (key,),
+        )
+        row = await cursor.fetchone()
+        return row["value"] if row else None
+    finally:
+        await conn.close()
+
+
+async def get_warehouse_location() -> dict | None:
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT key, value, updated_at FROM settings WHERE key IN (?, ?, ?)",
+            ("warehouse_latitude", "warehouse_longitude", "warehouse_location_name"),
+        )
+        rows = await cursor.fetchall()
+        if not rows:
+            return None
+        result = {row["key"]: row["value"] for row in rows}
+        try:
+            result["warehouse_latitude"] = float(result["warehouse_latitude"])
+            result["warehouse_longitude"] = float(result["warehouse_longitude"])
+        except (KeyError, ValueError, TypeError):
+            return None
+        return result
+    finally:
+        await conn.close()
+
+
+async def save_warehouse_location(
+    latitude: float,
+    longitude: float,
+    location_name: str | None = None,
+) -> None:
+    conn = await get_connection()
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        await conn.execute(
+            "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            ("warehouse_latitude", str(latitude), now),
+        )
+        await conn.execute(
+            "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            ("warehouse_longitude", str(longitude), now),
+        )
+        if location_name is not None:
+            await conn.execute(
+                "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+                ("warehouse_location_name", location_name, now),
+            )
+        await conn.commit()
     finally:
         await conn.close()

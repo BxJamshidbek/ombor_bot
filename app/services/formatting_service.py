@@ -109,6 +109,50 @@ def format_active_products_for_payment(
     return "\n\n---\n\n".join(lines)
 
 
+def format_client_products_message(client: dict, products: list[dict], limit: int = 20) -> str:
+    client_name = client.get("full_name") or "Ismsiz"
+
+    if not products:
+        return f"Bu mijozga tegishli mahsulotlar hali kiritilmagan."
+
+    shown = products[:limit]
+    lines = [f"📦 <b>{client_name} mahsulotlari</b>\n"]
+
+    for i, p in enumerate(shown, 1):
+        if p["status"] == "active":
+            status = "Omborda"
+        elif p["status"] == "exited":
+            status = "Chiqarilgan"
+        else:
+            status = p["status"]
+
+        lines.append(
+            f"{i}) <b>{p['product_name']}</b>\n"
+            f"   Miqdor: {p['kg_amount']} kg\n"
+            f"   1 kg narxi: {p['price_per_kg']:,.0f} so'm\n"
+            f"   Umumiy summa: {p['total_price']:,.0f} so'm\n"
+            f"   Qutilar soni: {p.get('box_count', 0)}\n"
+            f"   Qo'shilgan sana: {p['created_at'][:10]}\n"
+            f"   Holat: {status}"
+        )
+
+    remaining = len(products) - limit
+    if remaining > 0:
+        lines.append(f"\nYana {remaining} ta mahsulot bor.")
+
+    return "\n\n".join(lines)
+
+
+def format_product_types_list(product_types: list[dict]) -> str:
+    if not product_types:
+        return "Mahsulot turlari mavjud emas."
+    lines = ["📦 <b>Mahsulot turlari</b>\n"]
+    for i, pt in enumerate(product_types, 1):
+        emoji = pt.get("emoji", "📦")
+        lines.append(f"{i}. {emoji} {pt['name']}")
+    return "\n\n".join(lines)
+
+
 def format_admin_stats(stats: dict) -> str:
     return (
         "📊 <b>Ombor hisoboti</b>\n\n"

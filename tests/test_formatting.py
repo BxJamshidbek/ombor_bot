@@ -3,6 +3,8 @@ from app.services.formatting_service import (
     format_active_products_for_payment,
     format_admin_stats,
     format_client_list,
+    format_client_products_message,
+    format_product_types_list,
     format_product_list,
 )
 
@@ -243,3 +245,41 @@ class TestFormatActiveProductsForPayment:
         summaries = {1: {"paid_amount": 50000, "remaining_amount": 0}}
         result = format_active_products_for_payment(products, summaries)
         assert "0 so'm" in result
+
+
+def test_client_products_empty():
+    client = {"full_name": "Ali", "phone": "+998901234567"}
+    result = format_client_products_message(client, [])
+    assert "hali kiritilmagan" in result
+
+
+def test_client_products_active_status():
+    client = {"full_name": "Ali", "id": 1}
+    products = [make_product("Pomidor", kg=120, price=2000, total=240000, status="active")]
+    result = format_client_products_message(client, products)
+    assert "Pomidor" in result
+    assert "120 kg" in result
+    assert "Omborda" in result
+
+
+def test_client_products_exited_status():
+    client = {"full_name": "Ali", "id": 1}
+    products = [make_product("Bodring", status="exited")]
+    result = format_client_products_message(client, products)
+    assert "Bodring" in result
+    assert "Chiqarilgan" in result
+
+
+def test_product_types_list_has_olma_and_nok():
+    types = [
+        {"id": 1, "name": "Olma", "emoji": "🍎"},
+        {"id": 2, "name": "Nok", "emoji": "🍐"},
+    ]
+    result = format_product_types_list(types)
+    assert "Olma" in result
+    assert "Nok" in result
+
+
+def test_product_types_list_empty():
+    result = format_product_types_list([])
+    assert "mavjud emas" in result

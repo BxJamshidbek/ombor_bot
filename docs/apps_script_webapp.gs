@@ -5,7 +5,8 @@
  * 4 ta action: append_product, update_product_payment, move_product_to_exited, append_payment_history
  */
 
-const SECRET = "CHANGE_ME_SECRET";
+const SECRET = "ombor_2026_private_secret";
+const SPREADSHEET_ID = "1SVuJsd6h9OXo4MdHnmeO7_hDyD8NxLMSY5AeR1tDie4";
 
 const MAIN_SHEET_NAME = "Ombor";
 const EXITED_SHEET_NAME = "Chiqarilganlar";
@@ -64,7 +65,7 @@ function jsonOutput(obj) {
 }
 
 function getSpreadsheet_() {
-  return SpreadsheetApp.getActiveSpreadsheet();
+  return SpreadsheetApp.openById(SPREADSHEET_ID);
 }
 
 function getOrCreateSheet_(name, headers) {
@@ -163,7 +164,7 @@ function doPost(e) {
 
     const payload = JSON.parse(e.postData.contents);
 
-    if (payload.secret !== SECRET) {
+    if (!payload || payload.secret !== SECRET) {
       return jsonOutput({ ok: false, error: "unauthorized" });
     }
 
