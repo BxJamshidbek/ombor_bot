@@ -148,7 +148,7 @@ class SheetsService:
             self._ready = True
             webapp_url = config.google_script_webapp_url.rstrip("/")
             try:
-                resp = await asyncio.to_thread(requests.get, webapp_url, timeout=5)
+                resp = await asyncio.to_thread(requests.get, webapp_url, timeout=15)
                 if resp.status_code == 200 and resp.json().get("ok"):
                     logger.info("Google Sheets (Apps Script) ready at %s", webapp_url)
                 else:
@@ -221,7 +221,7 @@ class SheetsService:
         logger.info("Apps Script POST: action=%s", action)
         try:
             resp = await asyncio.to_thread(
-                requests.post, webapp_url, json=payload, timeout=15
+                requests.post, webapp_url, json=payload, timeout=60
             )
             logger.info("Apps Script response: status=%s", resp.status_code)
             if resp.status_code != 200:
@@ -253,7 +253,7 @@ class SheetsService:
         logger.info("Apps Script POST: action=%s", action)
         try:
             resp = await asyncio.to_thread(
-                requests.post, webapp_url, json=payload, timeout=15
+                requests.post, webapp_url, json=payload, timeout=60
             )
             logger.info("Apps Script response: status=%s", resp.status_code)
             if resp.status_code != 200:
